@@ -2,7 +2,7 @@
 // @name         VGMdb Album Downloader
 // @namespace    https://vgmdb.net/
 // @version      2.9.4
-// @description  支持 单张下载 & zip 打包 & 实时进度显示 & 图片重命名
+// @description  支持 单张下载 & zip 打包 & 实时进度显示 & 图片重命名 | Single download & ZIP packaging & real-time progress & image renaming
 // @match        https://vgmdb.net/album/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
