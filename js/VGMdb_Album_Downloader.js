@@ -8,6 +8,7 @@
 // @grant        GM_download
 // @connect      vgmdb.net
 // @connect      media.vgm.io
+// @author       Stardream
 // @license      MIT
 // @downloadURL https://update.greasyfork.org/scripts/530686/VGMdb%20Album%20Downloader.user.js
 // @updateURL https://update.greasyfork.org/scripts/530686/VGMdb%20Album%20Downloader.meta.js
