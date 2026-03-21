@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VGMdb Album Downloader
 // @namespace    https://vgmdb.net/
-// @version      2.9.3
+// @version      2.9.4
 // @description  支持 单张下载 & zip 打包 & 实时进度显示 & 图片重命名
 // @match        https://vgmdb.net/album/*
 // @grant        GM_xmlhttpRequest
@@ -191,7 +191,7 @@
                         });
                     });
                     await new Promise(res => setTimeout(res, 400));
-                    zipFiles.push({ name: filename, lastModified: new Date(), input: blob });
+                    zipFiles.push({ name: `Scans/${filename}`, lastModified: new Date(), input: blob });
                     log(T.added(filename));
                 } else {
                     GM_download({
