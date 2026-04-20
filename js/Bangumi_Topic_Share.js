@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.9
+// @version      4.10
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -179,7 +179,7 @@
         const contentEl = masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner');
         let fullContent = "";
         if (contentEl) {
-            const toHide = contentEl.querySelectorAll('.forum_category');
+            const toHide = contentEl.querySelectorAll('.forum_category, #catfish_likes_grid');
             toHide.forEach(el => el.style.display = 'none');
             fullContent = contentEl.innerText?.trim() || "";
             toHide.forEach(el => el.style.display = '');
@@ -300,6 +300,24 @@
                     html2canvas(iDoc.body.firstElementChild, { scale: 2, backgroundColor: null }),
                     timeout
                 ]);
+
+                // 裁掉底部全透明行（inline-block baseline gap 产生的透明条）
+                const imgData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                let trimH = canvas.height;
+                for (let y = canvas.height - 1; y >= 0; y--) {
+                    let opaque = false;
+                    for (let x = 0; x < canvas.width; x++) {
+                        if (imgData[(y * canvas.width + x) * 4 + 3] > 0) { opaque = true; break; }
+                    }
+                    if (opaque) { trimH = y + 1; break; }
+                }
+                if (trimH < canvas.height) {
+                    const trimmed = document.createElement('canvas');
+                    trimmed.width = canvas.width;
+                    trimmed.height = trimH;
+                    trimmed.getContext('2d').drawImage(canvas, 0, 0);
+                    canvas = trimmed;
+                }
             } catch (e) {
                 iframe?.remove();
                 showToast('✗ 截图失败，请刷新后重试');
