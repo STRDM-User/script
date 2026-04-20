@@ -127,7 +127,14 @@
         pureTitle = pureTitle.replace(/[»\n]/g, '').trim() || "分享话题";
 
         const masterPost = document.querySelector('.postTopic') || document.querySelector('[id^="post_"]');
-        let fullContent = (masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner'))?.innerText?.trim() || "";
+        const contentEl = masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner');
+        let fullContent = "";
+        if (contentEl) {
+            const toHide = contentEl.querySelectorAll('.forum_category');
+            toHide.forEach(el => el.style.display = 'none');
+            fullContent = contentEl.innerText?.trim() || "";
+            toHide.forEach(el => el.style.display = '');
+        }
         let displayContent = fullContent.length > 300 ? fullContent.substring(0, 300) + "..." : fullContent;
 
         const avatarBox = masterPost?.querySelector('.avatarSize48');
