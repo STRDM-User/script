@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.7
+// @version      4.8
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -275,19 +275,37 @@
         setTimeout(async () => {
             if (cancelled) return;
             let canvas;
+            let iframe = null;
             try {
                 const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
+                const captureEl = document.querySelector('#capture-area');
+
+                // 将卡片注入独立 iframe，避免 html2canvas 克隆整个 Bangumi 页面 DOM
+                iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;top:0;left:0;border:0;opacity:0;pointer-events:none;z-index:99999;';
+                iframe.style.width = captureEl.offsetWidth + 'px';
+                iframe.style.height = captureEl.offsetHeight + 'px';
+                document.body.appendChild(iframe);
+
+                const iDoc = iframe.contentDocument;
+                const iStyle = iDoc.createElement('style');
+                iStyle.textContent = style.innerHTML;
+                iDoc.head.appendChild(iStyle);
+                iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;';
+                iDoc.body.innerHTML = captureEl.innerHTML;
+
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
                 canvas = await Promise.race([
-                    html2canvas(document.querySelector('#capture-area'), {
-                        scale: 2, backgroundColor: null, useCORS: true,
-                        ignoreElements: (el) => el.tagName === 'CANVAS' && el !== document.querySelector('#capture-area')
-                    }),
+                    html2canvas(iDoc.body, { scale: 2, backgroundColor: null }),
                     timeout
                 ]);
             } catch (e) {
+                iframe?.remove();
                 showToast('✗ 截图失败，请刷新后重试');
                 return;
             }
+            iframe?.remove();
             if (cancelled) return;
 
             const copyBtn = document.getElementById('bgm-copy-btn');
