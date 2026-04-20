@@ -17,6 +17,10 @@
 (function() {
     'use strict';
 
+    function isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark';
+    }
+
     // ================= 配置区 =================
     const AI_CONFIG = {
         apiUrl: "在此处填入你的_API_URL", 
@@ -64,6 +68,17 @@
         .bgm-action-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); transform: scale(1.1); }
         .bgm-action-btn:disabled { opacity: 0.3; cursor: default; }
         .bgm-action-btn svg { display: block; }
+
+        /* ===== 暗色主题 ===== */
+        .share-card.dark { background: #1e1e1e; }
+        .share-card.dark .card-header { border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .share-card.dark .card-body { background: #1e1e1e; padding-top: 15px; }
+        .share-card.dark .main-title { color: #f0f0f0; }
+        .share-card.dark .content-box { background: #2a2a2a; border-left: 5px solid #F09199; }
+        .share-card.dark .content-text { color: #ddd; }
+        .share-card.dark .tags-container { margin-top: 15px; }
+        .share-card.dark .card-footer { background: #181818; border-top: 1px solid rgba(255,255,255,0.1); }
+        .share-card.dark .qr-img { background: #2a2a2a; }
     `;
     document.head.appendChild(style);
 
@@ -107,6 +122,8 @@
     }
 
     async function createShareImage() {
+        const dark = isDark();
+
         if (typeof html2canvas === 'undefined') {
             alert("截图库加载失败，请刷新页面或检查网络。");
             return;
@@ -146,7 +163,7 @@
         const [tags, base64Avatar, base64QR] = await Promise.all([
             getAITags(pureTitle, fullContent),
             fetchAsBase64(avatarUrl),
-            fetchAsBase64(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentFullUrl)}`)
+            fetchAsBase64(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentFullUrl)}${dark ? '&color=F09199&bgcolor=2a2a2a' : ''}`)
         ]);
 
         const tagsHtml = tags.map(tag => `<span class="tag-item"># ${tag}</span>`).join('');
@@ -158,7 +175,7 @@
         overlay.innerHTML = `
             <div style="display:flex; flex-direction:column; align-items:center;">
             <div id="capture-area" style="padding: 30px; background: transparent;">
-                <div class="share-card">
+                <div class="share-card${dark ? ' dark' : ''}">
                     <div class="card-top-bar"></div>
                     <div class="card-header">
                         <img class="avatar-img" src="${base64Avatar}">
@@ -174,8 +191,8 @@
                     </div>
                     <div class="card-footer">
                         <div style="text-align:left">
-                            <div style="font-size:14px; font-weight:bold; color:#555">Bangumi 番组计划</div>
-                            <div style="font-size:10px; color:#aaa; margin-top:2px;">${displayUrl}</div>
+                            <div style="font-size:14px; font-weight:bold; color:${dark ? '#F09199' : '#555'}">Bangumi 番组计划</div>
+                            <div style="font-size:10px; color:${dark ? '#888' : '#aaa'}; margin-top:2px;">${displayUrl}</div>
                         </div>
                         <img class="qr-img" src="${base64QR}">
                     </div>
