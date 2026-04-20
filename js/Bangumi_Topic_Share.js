@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.6
+// @version      4.7
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -206,7 +206,7 @@
         overlay.style.display = 'flex';
         overlay.innerHTML = `
             <div style="display:flex; flex-direction:column; align-items:center;">
-            <div id="capture-area" style="padding: 30px; background: transparent;">
+            <div id="capture-area" style="padding: 4px; background: transparent;">
                 <div class="share-card${dark ? ' dark' : ''}">
                     <div class="card-top-bar"></div>
                     <div class="card-header">
