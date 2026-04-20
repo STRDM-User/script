@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.2
+// @version      4.3
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -42,16 +42,17 @@
             box-shadow: 0 25px 60px rgba(0,0,0,0.5);
         }
         .card-top-bar { height: 6px; background: #F09199; }
-        .card-header { padding: 25px 25px 15px; display: flex; align-items: center; gap: 15px; text-align: left; }
+        .card-header { padding: 25px 25px 15px; display: flex; align-items: center; gap: 15px; text-align: left; border-bottom: 1px solid #eee; }
         .avatar-img { width: 54px; height: 54px; border-radius: 12px; background: #eee; background-size: cover; background-position: center; border: 1px solid #f0f0f0; flex-shrink: 0; }
         .user-meta { text-align: left; }
         .user-meta .name { display: block; font-weight: bold; color: #F09199; font-size: 17px; line-height: 1.2; }
         .user-meta .time { font-size: 12px; color: #aaa; margin-top: 4px; display: block; }
-        .card-body { padding: 0 25px 25px; text-align: left; }
+        .card-body { padding: 15px 25px 25px; text-align: left; }
         .main-title { font-size: 20px; color: #111; margin: 0 0 15px 0; line-height: 1.5; font-weight: 800; }
         .content-box { background: #fdfafb; padding: 18px; border-radius: 12px; border-left: 5px solid #F09199; }
         .content-text { font-size: 14px; color: #333; line-height: 1.8; margin: 0; white-space: pre-wrap; word-break: break-all; }
-        .tags-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+        .tags-container { display: flex; flex-wrap: wrap; gap: 8px; }
+        .share-card .tags-container { margin-top: 15px; }
         .tag-item { background: #FEEFF0; color: #F09199; font-size: 11px; padding: 4px 12px; border-radius: 20px; font-weight: bold; border: 1px solid #F0919944; }
         .card-footer { background: #f9f9f9; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; }
         .qr-img { width: 55px; height: 55px; background: #fff; }
@@ -77,6 +78,7 @@
         .share-card.dark .content-box { background: #2a2a2a; border-left: 5px solid #F09199; }
         .share-card.dark .content-text { color: #ddd; }
         .share-card.dark .tags-container { margin-top: 15px; }
+        .share-card.dark .tag-item { background: #2a2a2a; border: 1px solid #F0919966; }
         .share-card.dark .card-footer { background: #181818; border-top: 1px solid rgba(255,255,255,0.1); }
         .share-card.dark .qr-img { background: #2a2a2a; }
     `;
@@ -191,7 +193,7 @@
                     </div>
                     <div class="card-footer">
                         <div style="text-align:left">
-                            <div style="font-size:14px; font-weight:bold; color:${dark ? '#F09199' : '#555'}">Bangumi 番组计划</div>
+                            <div style="font-size:14px; font-weight:bold; color:#F09199">Bangumi 番组计划</div>
                             <div style="font-size:10px; color:${dark ? '#888' : '#aaa'}; margin-top:2px;">${displayUrl}</div>
                         </div>
                         <img class="qr-img" src="${base64QR}">
