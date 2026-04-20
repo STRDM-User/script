@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.8
+// @version      4.9
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -291,13 +291,13 @@
                 const iStyle = iDoc.createElement('style');
                 iStyle.textContent = style.innerHTML;
                 iDoc.head.appendChild(iStyle);
-                iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;';
+                iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;display:inline-block;';
                 iDoc.body.innerHTML = captureEl.innerHTML;
 
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
                 canvas = await Promise.race([
-                    html2canvas(iDoc.body, { scale: 2, backgroundColor: null }),
+                    html2canvas(iDoc.body.firstElementChild, { scale: 2, backgroundColor: null }),
                     timeout
                 ]);
             } catch (e) {
