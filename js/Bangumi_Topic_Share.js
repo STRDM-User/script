@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.5
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -104,8 +104,18 @@
         });
     }
 
+    function getPageTags() {
+        const groupLink = document.querySelector('a.avatar[href^="/group/"]');
+        let groupName = '';
+        if (groupLink) {
+            groupLink.childNodes.forEach(n => { if (n.nodeType === 3) groupName += n.textContent.trim(); });
+        }
+        const replyCount = Math.max(0, document.querySelectorAll('[id^="post_"]').length - 1);
+        return [groupName || 'Bangumi', `${replyCount} 回复`];
+    }
+
     async function getAITags(title, content) {
-        if (!AI_CONFIG.apiKey || AI_CONFIG.apiKey.includes("填入")) return ["话题", "讨论", "Bangumi"];
+        if (!AI_CONFIG.apiKey || AI_CONFIG.apiKey.includes("填入")) return getPageTags();
         return new Promise((resolve) => {
             const prompt = `根据标题和内容生成3个短标签，只要标签名，空格隔开。内容：${title} ${content.substring(0, 150)}`;
             GM_xmlhttpRequest({
