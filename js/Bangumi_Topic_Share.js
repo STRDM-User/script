@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.12
+// @version      4.13
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
@@ -11,6 +11,9 @@
 // @match        *://bgm.tv/subject/*/topic/*
 // @match        *://bangumi.tv/subject/*/topic/*
 // @match        *://chii.in/subject/*/topic/*
+// @match        *://bgm.tv/subject/topic/*
+// @match        *://bangumi.tv/subject/topic/*
+// @match        *://chii.in/subject/topic/*
 // @match        *://bgm.tv/blog/*
 // @match        *://bangumi.tv/blog/*
 // @match        *://chii.in/blog/*
@@ -425,7 +428,7 @@
                 try {
                     const iDoc = rightFrame.contentDocument;
                     const iUrl = rightFrame.contentWindow.location.href;
-                    if (/\/(group\/topic|subject\/\d+\/topic)\//.test(iUrl) || /\/blog\/\d+/.test(iUrl)) {
+                    if (/\/(group\/topic|subject(?:\/\d+)?\/topic)\//.test(iUrl) || /\/blog\/\d+/.test(iUrl)) {
                         insertButton(iDoc);
                     }
                 } catch (e) {}
