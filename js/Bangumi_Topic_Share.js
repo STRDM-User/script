@@ -123,7 +123,7 @@
         .content-text img.bmoji-image { display: inline; vertical-align: baseline; }
         .content-text img.smile-dynamic { display: inline !important; height: 3em !important; width: auto !important; vertical-align: baseline; }
         .content-text img:not([data-bgm-emoji]):not(.bmoji-image):not(.smile-dynamic) { max-width: 100%; height: auto; border-radius: 4px; margin: 4px 0; display: block; }
-        [data-bgm-mask] { display: inline; background-color: #555; color: #555; border: 1px solid #555; border-radius: 2px; padding: 0 4px; transition: color 0.3s ease; }
+        [data-bgm-mask] { display: inline; background-color: #555; color: #555; border-radius: 2px; background-clip: padding-box; padding: 0 5px; position: relative; transition: color 0.5s linear; }
     `;
     document.head.appendChild(style);
 
@@ -281,8 +281,14 @@
         if (contentEl) {
             const toHide = contentEl.querySelectorAll('.forum_category, #catfish_likes_grid, .embed-play-btn');
             toHide.forEach(el => el.style.display = 'none');
+            const computedHidden = [...contentEl.querySelectorAll('*')].filter(el => {
+                const cs = getComputedStyle(el);
+                return cs.display === 'none' || cs.visibility === 'hidden';
+            });
+            computedHidden.forEach(el => { el.dataset.hiddenSnapshot = '1'; el.style.display = 'none'; });
             fullContent = contentEl.innerText?.trim() || "";
             const fullHtml = contentEl.innerHTML?.trim() || "";
+            computedHidden.forEach(el => { delete el.dataset.hiddenSnapshot; el.style.display = ''; });
             toHide.forEach(el => el.style.display = '');
             const lim = replies.length > 0 ? 200 : 300;
             displayContentHtml = fullContent.length > lim ? (fullContent.substring(0, lim) + "...") : fullHtml;
@@ -474,7 +480,10 @@
                 const iDoc = iframe.contentDocument;
                 const iStyle = iDoc.createElement('style');
                 const maskCss = maskRevealed ? '[data-bgm-mask] { color: #fff !important; }' : '';
-                iStyle.textContent = style.innerHTML + maskCss;
+                const sampleLink = contentDoc.querySelector('a') || document.querySelector('a');
+                const linkColor = sampleLink ? getComputedStyle(sampleLink).color : (dark ? '#8ec8e8' : '#0066cc');
+                const sampleLinkDecoration = sampleLink ? getComputedStyle(sampleLink).textDecorationLine : 'none';
+                iStyle.textContent = style.innerHTML + maskCss + ` a { color: ${linkColor}; text-decoration: ${sampleLinkDecoration}; }`;
                 iDoc.head.appendChild(iStyle);
                 iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;display:inline-block;';
                 iDoc.body.innerHTML = captureEl.innerHTML;
