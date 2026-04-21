@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      5.2
+// @version      5.3
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -356,7 +356,7 @@
             <div id="capture-area" style="padding: 4px; background: transparent;">
                 <div class="share-card${dark ? ' dark' : ''}">
                     <div class="card-top-bar"></div>
-                    ${base64CharImage ? `<div style="display:flex;align-items:stretch;"><div style="flex:1;padding:22px 20px 14px 25px;display:flex;flex-direction:column;justify-content:center;min-height:150px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:0;height:1px;background:linear-gradient(to right,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 0%,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 60%,transparent 100%);"></div></div><div style="position:relative;width:130px;flex-shrink:0;overflow:hidden;min-height:150px;background-image:url('${base64CharImage}');background-size:cover;background-position:center top;background-color:${dark ? '#2a2a2a' : '#f9f5f5'};background-repeat:no-repeat;"><div style="position:absolute;inset:0;background:linear-gradient(to right,${dark ? '#1e1e1e' : '#fff'} 0%,transparent 15%),linear-gradient(to top,${dark ? '#1e1e1e' : '#fff'} 0%,transparent 15%);"></div></div></div>` : badgeLabel ? `<div style="padding:22px 25px 14px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:25px;height:1px;background:${dark ? 'rgba(255,255,255,0.1)' : '#eee'};"></div></div>` : ''}
+                    ${base64CharImage ? `<div style="display:flex;align-items:stretch;"><div style="flex:1;padding:22px 20px 14px 25px;display:flex;flex-direction:column;justify-content:center;min-height:150px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:0;height:1px;background:linear-gradient(to right,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 0%,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 60%,transparent 100%);"></div></div><div style="position:relative;width:130px;flex-shrink:0;min-height:150px;background-image:url('${base64CharImage}');background-size:cover;background-position:center top;background-color:${dark ? '#2a2a2a' : '#f9f5f5'};background-repeat:no-repeat;"><div style="position:absolute;top:0;left:-1px;right:0;bottom:-1px;background:linear-gradient(to right,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%),linear-gradient(to top,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%);"></div></div></div>` : badgeLabel ? `<div style="padding:22px 25px 14px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:25px;height:1px;background:${dark ? 'rgba(255,255,255,0.1)' : '#eee'};"></div></div>` : ''}
                     ${username ? `<div class="card-header" style="">
                         <img class="avatar-img" src="${base64Avatar}">
                         <div class="user-meta">
@@ -490,8 +490,12 @@
                 const iDoc = iframe.contentDocument;
                 const iStyle = iDoc.createElement('style');
                 const maskCss = maskRevealed ? '[data-bgm-mask] { color: #fff !important; }' : '';
-                const sampleLink = contentDoc.querySelector('a') || document.querySelector('a');
-                const linkColor = sampleLink ? getComputedStyle(sampleLink).color : (dark ? '#8ec8e8' : '#0066cc');
+                const sampleLink = contentDoc.querySelector('.topic_content a[href], #entry_content a[href], .message a[href]')
+                    || contentDoc.querySelector('a[href^="http"]')
+                    || contentDoc.querySelector('a[href]');
+                const rawLinkColor = sampleLink ? getComputedStyle(sampleLink).color : '';
+                const linkColor = rawLinkColor && rawLinkColor !== 'rgba(0, 0, 0, 0)' && rawLinkColor !== 'transparent'
+                    ? rawLinkColor : (dark ? '#8ec8e8' : '#0066cc');
                 const sampleLinkDecoration = sampleLink ? getComputedStyle(sampleLink).textDecorationLine : 'none';
                 iStyle.textContent = style.innerHTML + maskCss + ` a { color: ${linkColor}; text-decoration: ${sampleLinkDecoration}; }`;
                 iDoc.head.appendChild(iStyle);
