@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.11
-// @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
+// @version      4.12
+// @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
 // @match        *://bgm.tv/group/topic/*
@@ -11,6 +11,9 @@
 // @match        *://bgm.tv/subject/*/topic/*
 // @match        *://bangumi.tv/subject/*/topic/*
 // @match        *://chii.in/subject/*/topic/*
+// @match        *://bgm.tv/blog/*
+// @match        *://bangumi.tv/blog/*
+// @match        *://chii.in/blog/*
 // @match        *://bgm.tv/rakuen*
 // @match        *://bangumi.tv/rakuen*
 // @match        *://chii.in/rakuen*
@@ -123,6 +126,17 @@
     }
 
     function getPageTags(contentDoc) {
+        const contentWin = contentDoc.defaultView || window;
+        const isBlog = /\/blog\/\d+/.test(contentWin.location.pathname);
+        if (isBlog) {
+            const subjectNames = [...new Set(
+                [...contentDoc.querySelectorAll('a')]
+                    .filter(a => /\/subject\/\d+$/.test(a.href) && a.textContent.trim())
+                    .map(a => a.textContent.trim())
+            )];
+            const replyCount = contentDoc.querySelectorAll('[id^="post_"]').length;
+            return [...subjectNames, `${replyCount} 回复`, '日志'];
+        }
         const groupLink = contentDoc.querySelector('a.avatar[href^="/group/"]');
         let groupName = '';
         if (groupLink) {
@@ -171,19 +185,35 @@
         loading.innerHTML = '<div id="bgm-share-overlay" style="display:flex"><div id="loading-info">AI 正在提炼标签...</div></div>';
         document.body.appendChild(loading);
 
-        const firstPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
-        const idNode = firstPost?.querySelector('strong a') || firstPost?.querySelector('.author strong a');
-        const username = idNode ? idNode.innerText.trim() : "未知用户";
-        const timeNode = firstPost?.querySelector('small');
-        let postTime = timeNode ? (timeNode.innerText.match(/\d{4}-\d{1,2}-\d{1,2}\s\d{1,2}:\d{1,2}/)?.[0] || "未知时间") : "未知时间";
+        const isBlog = /\/blog\/\d+/.test(contentWin.location.pathname);
 
-        const h1Node = contentDoc.querySelector('#pageHeader h1') || contentDoc.querySelector('h1');
+        let username, postTime, avatarUrl, contentEl;
+        if (isBlog) {
+            const authorLink = contentDoc.querySelector('.author.user-card .title p a')
+                || contentDoc.querySelector('.author.user-card a.avatar');
+            username = authorLink ? authorLink.textContent.trim() : "未知用户";
+            const timeEl = contentDoc.querySelector('.header .tools .time');
+            postTime = timeEl ? (timeEl.innerText.match(/\d{4}-\d{1,2}-\d{1,2}\s\d{1,2}:\d{1,2}/)?.[0] || "未知时间") : "未知时间";
+            const avatarImg = contentDoc.querySelector('.author.user-card a.avatar img');
+            avatarUrl = avatarImg ? avatarImg.src : "";
+            contentEl = contentDoc.querySelector('#entry_content');
+        } else {
+            const firstPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
+            const idNode = firstPost?.querySelector('strong a') || firstPost?.querySelector('.author strong a');
+            username = idNode ? idNode.innerText.trim() : "未知用户";
+            const timeNode = firstPost?.querySelector('small');
+            postTime = timeNode ? (timeNode.innerText.match(/\d{4}-\d{1,2}-\d{1,2}\s\d{1,2}:\d{1,2}/)?.[0] || "未知时间") : "未知时间";
+            const masterPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
+            const avatarBox = masterPost?.querySelector('.avatarSize48');
+            avatarUrl = avatarBox ? contentWin.getComputedStyle(avatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
+            contentEl = masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner');
+        }
+
+        const h1Node = contentDoc.querySelector('#pageHeader h1') || contentDoc.querySelector('h1.title') || contentDoc.querySelector('h1');
         let pureTitle = "";
         if (h1Node) h1Node.childNodes.forEach(n => { if (n.nodeType === 3) pureTitle += n.textContent; });
         pureTitle = pureTitle.replace(/[»\n]/g, '').trim() || "分享话题";
 
-        const masterPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
-        const contentEl = masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner');
         let fullContent = "";
         if (contentEl) {
             const toHide = contentEl.querySelectorAll('.forum_category, #catfish_likes_grid');
@@ -192,9 +222,6 @@
             toHide.forEach(el => el.style.display = '');
         }
         let displayContent = fullContent.length > 300 ? fullContent.substring(0, 300) + "..." : fullContent;
-
-        const avatarBox = masterPost?.querySelector('.avatarSize48');
-        let avatarUrl = avatarBox ? contentWin.getComputedStyle(avatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
 
         const currentFullUrl = contentWin.location.origin + contentWin.location.pathname;
         const displayUrl = currentFullUrl.replace(/^https?:\/\//, '');
@@ -359,7 +386,8 @@
     const insertButton = (targetDoc = document) => {
         if (targetDoc.getElementById('gen-card-btn')) return;
 
-        const postActions = targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
+        const postActions = targetDoc.querySelector('.entry-actions .post_actions')
+            || targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
             || targetDoc.querySelector('[id^="post_"] .post_actions:not(.re_info)')
             || targetDoc.querySelector('.post_actions:not(.re_info)');
         if (postActions) {
@@ -397,7 +425,7 @@
                 try {
                     const iDoc = rightFrame.contentDocument;
                     const iUrl = rightFrame.contentWindow.location.href;
-                    if (/\/(group\/topic|subject\/\d+\/topic)\//.test(iUrl)) {
+                    if (/\/(group\/topic|subject\/\d+\/topic)\//.test(iUrl) || /\/blog\/\d+/.test(iUrl)) {
                         insertButton(iDoc);
                     }
                 } catch (e) {}
