@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      5.1
+// @version      5.2
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -166,8 +166,18 @@
         const contentWin = contentDoc.defaultView || window;
         const pathname = contentWin.location.pathname;
         const isBlog = /\/blog\/\d+/.test(pathname);
+        const isEpisode = /\/ep\/\d+/.test(pathname);
         const isCharacter = /\/character\/\d+|\/rakuen\/topic\/crt\/\d+/.test(pathname);
         const isPerson = /\/person\/\d+|\/rakuen\/topic\/prsn\/\d+/.test(pathname);
+        if (isEpisode) {
+            const epIdMatch = pathname.match(/\/ep\/(\d+)/);
+            const replyCount = contentDoc.querySelectorAll('[id^="post_"]').length;
+            if (epIdMatch) {
+                const epData = await fetchEpisodeData(epIdMatch[1]);
+                if (epData?.subjectName) return [epData.subjectName, `${replyCount} 回复`];
+            }
+            return [`${replyCount} 回复`];
+        }
         if (isBlog) {
             const subjectNames = [...new Set(
                 [...contentDoc.querySelectorAll('a')]
@@ -624,16 +634,35 @@
         return { imageUrl, name, badgeLabel, id, type };
     }
 
+    const _episodeDataCache = {};
+    async function fetchEpisodeData(episodeId) {
+        if (_episodeDataCache[episodeId]) return _episodeDataCache[episodeId];
+        const ep = await fetchBangumiAPI(`episodes/${episodeId}`);
+        if (!ep) return null;
+        const subject = await fetchBangumiAPI(`subjects/${ep.subject_id}`);
+        const result = {
+            episodeName: ep.name_cn || ep.name || '',
+            subjectName: subject?.name_cn || subject?.name || '',
+            subjectImageUrl: subject?.images?.common || subject?.images?.medium || '',
+            epNumber: ep.ep
+        };
+        _episodeDataCache[episodeId] = result;
+        return result;
+    }
+
     async function createShareImage(contentDoc = document) {
         const dark = contentDoc.documentElement.getAttribute('data-theme') === 'dark';
         const contentWin = contentDoc.defaultView || window;
 
         const isBlog = /\/blog\/\d+/.test(contentWin.location.pathname);
+        const isEpisode = /\/ep\/\d+/.test(contentWin.location.pathname);
         const isCharacter = /\/character\/\d+|\/rakuen\/topic\/crt\/\d+/.test(contentWin.location.pathname);
         const isPerson = /\/person\/\d+|\/rakuen\/topic\/prsn\/\d+/.test(contentWin.location.pathname);
 
         let username, postTime, avatarUrl, contentEl;
-        if (isBlog) {
+        if (isEpisode || isCharacter || isPerson) {
+            username = ""; postTime = ""; avatarUrl = ""; contentEl = null;
+        } else if (isBlog) {
             const authorLink = contentDoc.querySelector('.author.user-card .title p a')
                 || contentDoc.querySelector('.author.user-card a.avatar');
             username = authorLink ? authorLink.textContent.trim() : "未知用户";
@@ -676,6 +705,17 @@
             if (apiData) {
                 if (!charImageUrl) charImageUrl = apiData.imageUrl;
                 if (!badgeLabel || badgeLabel === '人物') badgeLabel = apiData.badgeLabel;
+            }
+        }
+        if (isEpisode) {
+            const epIdMatch = contentWin.location.pathname.match(/\/ep\/(\d+)/);
+            if (epIdMatch) {
+                const epData = await fetchEpisodeData(epIdMatch[1]);
+                if (epData) {
+                    if (epData.episodeName) pureTitle = epData.episodeName;
+                    if (epData.subjectImageUrl) charImageUrl = epData.subjectImageUrl;
+                    badgeLabel = epData.epNumber ? `第${epData.epNumber}话` : '章节';
+                }
             }
         }
         await _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark, charImageUrl, badgeLabel });
@@ -777,6 +817,17 @@
             if (apiData) {
                 if (!charImageUrl) charImageUrl = apiData.imageUrl;
                 if (!badgeLabel || badgeLabel === '人物') badgeLabel = apiData.badgeLabel;
+            }
+        }
+        if (isEpisode) {
+            const epIdMatch = contentWin.location.pathname.match(/\/ep\/(\d+)/);
+            if (epIdMatch) {
+                const epData = await fetchEpisodeData(epIdMatch[1]);
+                if (epData) {
+                    if (epData.episodeName) pureTitle = epData.episodeName;
+                    if (epData.subjectImageUrl) charImageUrl = epData.subjectImageUrl;
+                    badgeLabel = epData.epNumber ? `第${epData.epNumber}话` : '章节';
+                }
             }
         }
         await _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark,
