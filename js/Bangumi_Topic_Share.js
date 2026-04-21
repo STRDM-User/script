@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      5.3
+// @version      5.4
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -861,7 +861,7 @@
         const postActions = targetDoc.querySelector('.entry-actions .post_actions')
             || targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
             || targetDoc.querySelector('[id^="post_"] .post_actions:not(.re_info)')
-            || targetDoc.querySelector('.post_actions:not(.re_info)');
+            || [...targetDoc.querySelectorAll('.post_actions:not(.re_info)')].find(el => !el.closest('#sliderContainer'));
         if (postActions) {
             const wrap = targetDoc.createElement('span');
             wrap.className = 'action';
