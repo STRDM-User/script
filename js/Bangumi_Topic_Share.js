@@ -1,13 +1,19 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      4.10
+// @version      4.11
 // @description  Bangumi 话题分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Chang ji
 // @contributor  Stardream
 // @match        *://bgm.tv/group/topic/*
 // @match        *://bangumi.tv/group/topic/*
 // @match        *://chii.in/group/topic/*
+// @match        *://bgm.tv/subject/*/topic/*
+// @match        *://bangumi.tv/subject/*/topic/*
+// @match        *://chii.in/subject/*/topic/*
+// @match        *://bgm.tv/rakuen*
+// @match        *://bangumi.tv/rakuen*
+// @match        *://chii.in/rakuen*
 // @grant        GM_xmlhttpRequest
 // @connect      *
 // @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
@@ -17,14 +23,10 @@
 (function() {
     'use strict';
 
-    function isDark() {
-        return document.documentElement.getAttribute('data-theme') === 'dark';
-    }
-
     // ================= 配置区 =================
     const AI_CONFIG = {
-        apiUrl: "在此处填入你的_API_URL", 
-        apiKey: "在此处填入你的_API_KEY", 
+        apiUrl: "在此处填入你的_API_URL",
+        apiKey: "在此处填入你的_API_KEY",
         model: "gpt-3.5-turbo",
     };
     // =========================================
@@ -104,10 +106,6 @@
     `;
     document.head.appendChild(style);
 
-    function getElementByXpath(path) {
-        return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-    }
-
     function fetchAsBase64(url) {
         return new Promise((resolve) => {
             if (!url) { resolve(""); return; }
@@ -124,18 +122,23 @@
         });
     }
 
-    function getPageTags() {
-        const groupLink = document.querySelector('a.avatar[href^="/group/"]');
+    function getPageTags(contentDoc) {
+        const groupLink = contentDoc.querySelector('a.avatar[href^="/group/"]');
         let groupName = '';
         if (groupLink) {
             groupLink.childNodes.forEach(n => { if (n.nodeType === 3) groupName += n.textContent.trim(); });
         }
-        const replyCount = Math.max(0, document.querySelectorAll('[id^="post_"]').length - 1);
+        if (!groupName) {
+            const subjectLink = contentDoc.querySelector('#pageHeader a[href^="/subject/"]')
+                || contentDoc.querySelector('a[href^="/subject/"]');
+            if (subjectLink) groupName = subjectLink.textContent.trim();
+        }
+        const replyCount = Math.max(0, contentDoc.querySelectorAll('[id^="post_"]').length - 1);
         return [groupName || 'Bangumi', `${replyCount} 回复`];
     }
 
-    async function getAITags(title, content) {
-        if (!AI_CONFIG.apiKey || AI_CONFIG.apiKey.includes("填入")) return getPageTags();
+    async function getAITags(title, content, contentDoc) {
+        if (!AI_CONFIG.apiKey || AI_CONFIG.apiKey.includes("填入")) return getPageTags(contentDoc);
         return new Promise((resolve) => {
             const prompt = `根据标题和内容生成3个短标签，只要标签名，空格隔开。内容：${title} ${content.substring(0, 150)}`;
             GM_xmlhttpRequest({
@@ -146,15 +149,18 @@
                     try {
                         const tags = JSON.parse(res.responseText).choices[0].message.content.trim().split(/\s+/).slice(0, 3);
                         resolve(tags);
-                    } catch (e) { resolve(["话题", "讨论", "Bangumi"]); }
+                    } catch (e) { resolve(getPageTags(contentDoc)); }
                 },
-                onerror: () => resolve(["话题", "讨论", "Bangumi"])
+                onerror: () => resolve(getPageTags(contentDoc))
             });
         });
     }
 
-    async function createShareImage() {
-        const dark = isDark();
+    // contentDoc: the document containing the topic (may be an iframe's doc on Rakuen)
+    // Overlay is always rendered in the outer document (where GM functions are available)
+    async function createShareImage(contentDoc = document) {
+        const dark = contentDoc.documentElement.getAttribute('data-theme') === 'dark';
+        const contentWin = contentDoc.defaultView || window;
 
         if (typeof html2canvas === 'undefined') {
             alert("截图库加载失败，请刷新页面或检查网络。");
@@ -165,17 +171,18 @@
         loading.innerHTML = '<div id="bgm-share-overlay" style="display:flex"><div id="loading-info">AI 正在提炼标签...</div></div>';
         document.body.appendChild(loading);
 
-        const idNode = getElementByXpath("/html/body/div[1]/div[2]/div[1]/div[1]/div[2]/div[2]/strong/a");
+        const firstPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
+        const idNode = firstPost?.querySelector('strong a') || firstPost?.querySelector('.author strong a');
         const username = idNode ? idNode.innerText.trim() : "未知用户";
-        const timeNode = getElementByXpath("/html/body/div[1]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/small");
+        const timeNode = firstPost?.querySelector('small');
         let postTime = timeNode ? (timeNode.innerText.match(/\d{4}-\d{1,2}-\d{1,2}\s\d{1,2}:\d{1,2}/)?.[0] || "未知时间") : "未知时间";
 
-        const h1Node = document.querySelector('#pageHeader h1') || document.querySelector('h1');
+        const h1Node = contentDoc.querySelector('#pageHeader h1') || contentDoc.querySelector('h1');
         let pureTitle = "";
         if (h1Node) h1Node.childNodes.forEach(n => { if (n.nodeType === 3) pureTitle += n.textContent; });
         pureTitle = pureTitle.replace(/[»\n]/g, '').trim() || "分享话题";
 
-        const masterPost = document.querySelector('.postTopic') || document.querySelector('[id^="post_"]');
+        const masterPost = contentDoc.querySelector('.postTopic') || contentDoc.querySelector('[id^="post_"]');
         const contentEl = masterPost?.querySelector('.topic_content') || masterPost?.querySelector('.inner');
         let fullContent = "";
         if (contentEl) {
@@ -187,13 +194,13 @@
         let displayContent = fullContent.length > 300 ? fullContent.substring(0, 300) + "..." : fullContent;
 
         const avatarBox = masterPost?.querySelector('.avatarSize48');
-        let avatarUrl = avatarBox ? window.getComputedStyle(avatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
+        let avatarUrl = avatarBox ? contentWin.getComputedStyle(avatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
 
-        const currentFullUrl = window.location.origin + window.location.pathname;
+        const currentFullUrl = contentWin.location.origin + contentWin.location.pathname;
         const displayUrl = currentFullUrl.replace(/^https?:\/\//, '');
 
         const [tags, base64Avatar, base64QR] = await Promise.all([
-            getAITags(pureTitle, fullContent),
+            getAITags(pureTitle, fullContent, contentDoc),
             fetchAsBase64(avatarUrl),
             fetchAsBase64(`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentFullUrl)}${dark ? '&color=F09199&bgcolor=2a2a2a' : ''}`)
         ]);
@@ -280,7 +287,6 @@
                 const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
                 const captureEl = document.querySelector('#capture-area');
 
-                // 将卡片注入独立 iframe，避免 html2canvas 克隆整个 Bangumi 页面 DOM
                 iframe = document.createElement('iframe');
                 iframe.style.cssText = 'position:fixed;top:0;left:0;border:0;opacity:0;pointer-events:none;z-index:99999;';
                 iframe.style.width = captureEl.offsetWidth + 'px';
@@ -350,20 +356,55 @@
         }, 800);
     }
 
-    const insertButton = () => {
-        const menuInner = document.querySelector('#columnInSubjectB .menu_inner');
-        if (menuInner && !document.getElementById('gen-card-btn')) {
-            const br = document.createElement('br');
-            const btn = document.createElement('a');
-            btn.id = 'gen-card-btn';
-            btn.href = 'javascript:void(0);';
-            btn.className = 'l';
-            btn.textContent = '/ 分享';
-            menuInner.appendChild(br);
-            menuInner.appendChild(btn);
-            btn.addEventListener('click', createShareImage);
+    const insertButton = (targetDoc = document) => {
+        if (targetDoc.getElementById('gen-card-btn')) return;
+
+        const postActions = targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
+            || targetDoc.querySelector('[id^="post_"] .post_actions:not(.re_info)')
+            || targetDoc.querySelector('.post_actions:not(.re_info)');
+        if (postActions) {
+            const wrap = targetDoc.createElement('span');
+            wrap.className = 'action';
+            wrap.innerHTML = '<a href="javascript:void(0);" id="gen-card-btn" class="icon" title="分享话题" style="display:inline-flex;align-items:center;gap:3px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span class="title">分享</span></a>';
+            postActions.appendChild(wrap);
+            targetDoc.getElementById('gen-card-btn').addEventListener('click', () => createShareImage(targetDoc));
+            return;
+        }
+
+        // 降级：插入普通页面侧栏（仅非 Rakuen 场景）
+        if (targetDoc === document) {
+            const menuInner = document.querySelector('#columnInSubjectB .menu_inner')
+                || document.querySelector('#columnSubjectB .menu_inner');
+            if (menuInner) {
+                const br = document.createElement('br');
+                const btn = document.createElement('a');
+                btn.id = 'gen-card-btn';
+                btn.href = 'javascript:void(0);';
+                btn.className = 'l';
+                btn.textContent = '/ 分享';
+                menuInner.appendChild(br);
+                menuInner.appendChild(btn);
+                btn.addEventListener('click', () => createShareImage(document));
+            }
         }
     };
 
-    setTimeout(insertButton, 500);
+    // 超展开：在外层页面监听 #right iframe 导航，注入按钮
+    const rightFrame = document.getElementById('right');
+    if (rightFrame && rightFrame.tagName === 'IFRAME') {
+        const onRightFrameLoad = () => {
+            setTimeout(() => {
+                try {
+                    const iDoc = rightFrame.contentDocument;
+                    const iUrl = rightFrame.contentWindow.location.href;
+                    if (/\/(group\/topic|subject\/\d+\/topic)\//.test(iUrl)) {
+                        insertButton(iDoc);
+                    }
+                } catch (e) {}
+            }, 800);
+        };
+        rightFrame.addEventListener('load', onRightFrameLoad);
+    } else {
+        setTimeout(insertButton, 500);
+    }
 })();
