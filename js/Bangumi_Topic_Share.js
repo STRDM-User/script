@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      6.0
+// @version      6.1
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -83,9 +83,13 @@
     }
 
     const startBgmOAuth = () => {
+        const w = 600, h = 600;
+        const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+        const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
         window.open(
             `https://bgm.tv/oauth/authorize?client_id=${BGM_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(BGM_REDIRECT_URI)}`,
-            '_blank'
+            'bgm_oauth',
+            `width=${w},height=${h},left=${left},top=${top},popup=1`
         );
         const onFocus = () => {
             window.removeEventListener('focus', onFocus);
@@ -866,7 +870,30 @@
         const ep = await fetchBangumiAPI(`episodes/${episodeId}`);
         if (!ep) {
             _shareNotice = 'NSFW 条目 API 无权访问，已降级为页面数据，部分信息可能不完整';
-            return null;
+            let episodeName = '', epNumber = null;
+            const epH2 = document.querySelector('h2.title');
+            if (epH2) {
+                let rawText = '';
+                epH2.childNodes.forEach(n => { if (n.nodeType === 3) rawText += n.textContent; });
+                rawText = rawText.trim();
+                const epMatch = rawText.match(/^ep\.(\d+)\s*(.*)$/i);
+                if (epMatch) { epNumber = parseInt(epMatch[1]); episodeName = epMatch[2].trim() || rawText; }
+                else episodeName = rawText;
+            }
+            if (!episodeName) {
+                const h1Node = document.querySelector('#pageHeader h1') || document.querySelector('h1');
+                if (h1Node) h1Node.childNodes.forEach(n => { if (n.nodeType === 3) episodeName += n.textContent; });
+                episodeName = episodeName.replace(/[»\n]/g, '').trim();
+            }
+            const subjectLink = document.querySelector('#headerSubject a[href*="/subject/"]')
+                || document.querySelector('#pageHeader a[href*="/subject/"]')
+                || document.querySelector('a.cover[href*="/subject/"]');
+            const subjectName = subjectLink?.textContent?.trim() || '';
+            const subjectImg = document.querySelector('img[src*="/pic/cover/l/"]') || document.querySelector('img[src*="/pic/cover/m/"]');
+            const subjectImageUrl = subjectImg?.src || '';
+            const result = { episodeName, subjectName, subjectImageUrl, epNumber, _domFallback: true };
+            _episodeDataCache[episodeId] = result;
+            return result;
         }
         const subject = await fetchBangumiAPI(`subjects/${ep.subject_id}`);
         let subjectName = subject?.name_cn || subject?.name || '';
@@ -1417,7 +1444,7 @@
         const postActions = targetDoc.querySelector('.entry-actions .post_actions')
             || targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
             || targetDoc.querySelector('[id^="post_"] .post_actions:not(.re_info)')
-            || [...targetDoc.querySelectorAll('.post_actions:not(.re_info)')].find(el => !el.closest('#sliderContainer') && !el.closest('#comment_box'));
+            || [...targetDoc.querySelectorAll('.post_actions:not(.re_info)')].find(el => !el.closest('#sliderContainer') && !el.closest('#comment_box') && !el.closest('#timeline'));
         if (postActions) {
             const wrap = targetDoc.createElement('span');
             wrap.className = 'action';
@@ -1702,7 +1729,7 @@
             </div>
             <div class="section">
                 <div class="title">AI 标签配置（可选）</div>
-                <div style="display:flex;flex-direction:column;gap:10px;padding-top:8px;font-size:13px;">
+                <div style="display:flex;flex-direction:column;gap:10px;padding-top:8px;padding-right:10px;font-size:13px;">
                     <label>API URL<br><input id="bgm-share-ai-url" type="text" class="inputtext" style="width:100%;margin-top:4px;" value="${aiUrl}" placeholder="https://api.openai.com/v1/chat/completions"></label>
                     <label>API Key<br><input id="bgm-share-ai-key" type="password" class="inputtext" style="width:100%;margin-top:4px;" value="${aiKey}" placeholder="sk-..."></label>
                     <label>模型<br><input id="bgm-share-ai-model" type="text" class="inputtext" style="width:100%;margin-top:4px;" value="${aiModel}"></label>
