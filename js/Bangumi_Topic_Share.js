@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
-// @version      6.1
+// @version      6.2
 // @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -41,6 +41,15 @@
 // @match        *://bgm.tv/book/list/*
 // @match        *://bangumi.tv/book/list/*
 // @match        *://chii.in/book/list/*
+// @match        *://bgm.tv/user/*/timeline/status/*
+// @match        *://bangumi.tv/user/*/timeline/status/*
+// @match        *://chii.in/user/*/timeline/status/*
+// @match        *://bgm.tv/user/*/timeline
+// @match        *://bangumi.tv/user/*/timeline
+// @match        *://chii.in/user/*/timeline
+// @match        *://bgm.tv/timeline
+// @match        *://bangumi.tv/timeline
+// @match        *://chii.in/timeline
 // @match        *://bgm.tv/
 // @match        *://bangumi.tv/
 // @match        *://chii.in/
@@ -187,7 +196,7 @@
         .main-title { font-size: 20px; color: #111; margin: 0 0 15px 0; line-height: 1.5; font-weight: 800; }
         .topic-sub-title { font-size: 16px; color: #333; margin: 0 0 14px; font-weight: 700; line-height: 1.4; }
         .content-box { background: #fdfafb; padding: 18px; border-radius: 12px; border-left: 5px solid #F09199; }
-        .content-text { font-size: 14px; color: #333; line-height: 1.8; margin: 0; word-break: break-all; }
+        .content-text { font-size: 14px; color: #333; line-height: 1.8; margin: 0; word-break: break-all; font-kerning: none; }
         .tags-container { display: flex; flex-wrap: wrap; gap: 8px; }
         .share-card .tags-container { margin-top: 15px; }
         .tag-item { background: #FEEFF0; color: #F09199; font-size: 11px; padding: 4px 12px; border-radius: 20px; font-weight: bold; border: 1px solid #F0919944; }
@@ -431,7 +440,7 @@
     // contentDoc: the document containing the topic (may be an iframe's doc on Rakuen)
     // Overlay is always rendered in the outer document (where GM functions are available)
     async function _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark,
-                                   replies = [], replyId = '', charImageUrl = '', badgeLabel = '', overrideTags = null, topicTitle = '' }) {
+                                   replies = [], replyId = '', charImageUrl = '', badgeLabel = '', overrideTags = null, topicTitle = '', noCardTitle = false, shareTitle = '' }) {
         if (document.getElementById('bgm-share-overlay')) return;
         if (typeof html2canvas === 'undefined') {
             alert("截图库加载失败，请刷新页面或检查网络。");
@@ -524,9 +533,9 @@
                         </div>
                     </div>` : ''}
                     <div class="card-body">
-                        ${(base64CharImage || badgeLabel) ? '' : `<h1 class="main-title">${pureTitle}</h1>`}
+                        ${(base64CharImage || badgeLabel || noCardTitle) ? '' : `<h1 class="main-title">${pureTitle}</h1>`}
                         ${topicTitle ? `<h2 class="topic-sub-title">${topicTitle}</h2>` : ''}
-                        ${inlinedMainContent ? `<div class="content-box"><p class="content-text">${inlinedMainContent}</p></div>` : ''}
+                        ${inlinedMainContent ? `<div class="content-box"><div class="content-text">${inlinedMainContent}</div></div>` : ''}
                         ${replySection}
                         <div class="tags-container">${tagsHtml}</div>
                     </div>
@@ -552,9 +561,6 @@
                 </button>
                 <button id="bgm-mask-btn" class="bgm-action-btn" data-tip="显示剧透">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-                <button id="bgm-close-btn" class="bgm-action-btn" data-tip="关闭">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
             </div>
@@ -588,10 +594,12 @@
         };
         updateMaskPreview();
 
-        document.getElementById('bgm-close-btn').addEventListener('click', () => {
-            cancelled = true;
-            maskPreviewStyle.remove();
-            overlay.remove();
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                cancelled = true;
+                maskPreviewStyle.remove();
+                overlay.remove();
+            }
         });
 
         const showToast = (msg) => {
@@ -603,7 +611,7 @@
         };
 
         document.getElementById('bgm-text-btn').addEventListener('click', async () => {
-            const shareText = `【链接】${pureTitle} | Bangumi番组计划\n${shareUrl}`;
+            const shareText = `【链接】${shareTitle || topicTitle || pureTitle} | Bangumi番组计划\n${shareUrl}`;
             try {
                 await navigator.clipboard.writeText(shareText);
                 showToast('✓ 文案已复制');
@@ -656,7 +664,7 @@
                 const iDoc = iframe.contentDocument;
                 const iStyle = iDoc.createElement('style');
                 const maskCss = maskRevealed ? '[data-bgm-mask] { color: #fff !important; }' : '';
-                const sampleLink = contentDoc.querySelector('.topic_content a[href], #entry_content a[href], .message a[href]')
+                const sampleLink = contentDoc.querySelector('.topic_content a[href], #entry_content a[href], .message a[href], .statusContent .text a[href], .subReply a.l[href]')
                     || contentDoc.querySelector('a[href^="http"]')
                     || contentDoc.querySelector('a[href]');
                 const rawLinkColor = sampleLink ? getComputedStyle(sampleLink).color : '';
@@ -697,7 +705,7 @@
                         if (bodyColor) quoteCss += `.content-text{color:${bodyColor} !important;}`;
                     }
                 } catch (e) {}
-                iStyle.textContent = style.innerHTML + maskCss + quoteCss + ` a { color: ${linkColor}; text-decoration: ${sampleLinkDecoration}; } span[style*="line-through"], span[style*="line-through"] * { text-decoration: line-through !important; text-decoration-color: white !important; }`;
+                iStyle.textContent = style.innerHTML + maskCss + quoteCss + ` a { color: ${linkColor} !important; text-decoration: ${sampleLinkDecoration}; } span[style*="line-through"], span[style*="line-through"] * { text-decoration: line-through !important; text-decoration-color: white !important; }`;
                 iDoc.head.appendChild(iStyle);
                 iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;display:inline-block;';
                 iDoc.body.innerHTML = captureEl.innerHTML;
@@ -720,6 +728,38 @@
                     });
                     el.style.backgroundColor = 'transparent';
                     el.style.backgroundImage = 'none';
+                });
+
+                // html2canvas undercounts advance widths for full-width CJK punctuation (《（【etc.)
+                // because canvas.measureText() returns only the glyph width, not the full advance.
+                // Wrapping each as display:inline-block with width:1em forces html2canvas to read
+                // the DOM layout box instead of measureText, giving the correct advance.
+                const CJK_PUNCT_RE = /[《》〈〉「」【】〔〕〖〗（）｛｝]/;
+                const CJK_PUNCT_SPLIT_RE = /(《|》|〈|〉|「|」|【|】|〔|〕|〖|〗|（|）|｛|｝)/u;
+                iDoc.querySelectorAll('.content-text').forEach(contentEl => {
+                    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, null);
+                    const textNodes = [];
+                    let tn;
+                    while (tn = walker.nextNode()) {
+                        if (CJK_PUNCT_RE.test(tn.textContent)) textNodes.push(tn);
+                    }
+                    textNodes.forEach(tn => {
+                        const parts = tn.textContent.split(CJK_PUNCT_SPLIT_RE);
+                        if (parts.length <= 1) return;
+                        const frag = iDoc.createDocumentFragment();
+                        parts.forEach(part => {
+                            if (!part) return;
+                            if (CJK_PUNCT_RE.test(part) && part.length === 1) {
+                                const sp = iDoc.createElement('span');
+                                sp.style.cssText = 'display:inline-block;width:1em;text-align:center;';
+                                sp.textContent = part;
+                                frag.appendChild(sp);
+                            } else {
+                                frag.appendChild(iDoc.createTextNode(part));
+                            }
+                        });
+                        tn.parentNode.replaceChild(frag, tn);
+                    });
                 });
 
                 canvas = await Promise.race([
@@ -1444,7 +1484,7 @@
         const postActions = targetDoc.querySelector('.entry-actions .post_actions')
             || targetDoc.querySelector('.postTopic .post_actions:not(.re_info)')
             || targetDoc.querySelector('[id^="post_"] .post_actions:not(.re_info)')
-            || [...targetDoc.querySelectorAll('.post_actions:not(.re_info)')].find(el => !el.closest('#sliderContainer') && !el.closest('#comment_box') && !el.closest('#timeline'));
+            || [...targetDoc.querySelectorAll('.post_actions:not(.re_info)')].find(el => !el.closest('#sliderContainer') && !el.closest('#comment_box') && !el.closest('#timeline') && !el.closest('.statusContent'));
         if (postActions) {
             const wrap = targetDoc.createElement('span');
             wrap.className = 'action';
@@ -1766,6 +1806,618 @@
         });
     }
 
+    function _getStatusAuthorInfo(doc) {
+        const usernameEl = doc.querySelector('.statusHeader h3 a');
+        const username = usernameEl?.textContent.trim() || '';
+        const avatarSpan = doc.querySelector('.statusHeader .avatarNeue');
+        let avatarUrl = '';
+        const bgImg = avatarSpan?.style.backgroundImage;
+        if (bgImg) {
+            const m = bgImg.match(/url\(['"]?([^'"]+)['"]?\)/);
+            if (m) avatarUrl = m[1].replace(/^\/\//, 'https://');
+        }
+        const timeEl = doc.querySelector('.statusContent .post_actions .tip_j');
+        const postTime = timeEl?.textContent.trim() || '';
+        return { username, avatarUrl, postTime };
+    }
+
+    async function _buildCollectionStatusInfo(doc, contentWin, username, avatarUrl, postTime) {
+        const statusContent = doc.querySelector('.statusContent');
+        const subjectLink = statusContent?.querySelector('a[data-subject-id]');
+        const subjectId = subjectLink?.getAttribute('data-subject-id');
+        const collectComment = statusContent?.querySelector('.comment');
+        if (!subjectId || !collectComment) return null;
+
+        const userSlug = contentWin.location.pathname.match(/\/user\/([^\/]+)\//)?.[1] || '';
+        let collectionStatus = '';
+        if (subjectLink) {
+            let node = subjectLink.previousSibling;
+            while (node) {
+                if (node.nodeType === 3 && node.textContent.trim()) { collectionStatus = node.textContent.trim().replace(/了$/, ''); break; }
+                node = node.previousSibling;
+            }
+        }
+        const ratingEl = collectComment.querySelector('.starstop-s .starlight');
+        const domRating = parseInt(ratingEl?.className.match(/stars(\d+)/)?.[1] || '0');
+        const cleanCommentHtml = (() => {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = collectComment.innerHTML;
+            tmp.querySelector('.starstop-s')?.remove();
+            return tmp.innerHTML.trim();
+        })();
+        const subjectData = await fetchSubjectDataById(subjectId);
+        const subjectName = subjectData?.name || subjectLink?.textContent.trim() || '作品';
+        let rating = domRating, userTags = null, apiTime = postTime;
+        if (userSlug) {
+            const collection = await fetchBangumiAPI(`users/${userSlug}/collections/${subjectId}`);
+            if (collection) {
+                rating = collection.rate || rating;
+                if (collection.updated_at) {
+                    const d = new Date(collection.updated_at);
+                    const pad = n => String(n).padStart(2, '0');
+                    apiTime = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                }
+                if (collection.tags?.length > 0) userTags = collection.tags;
+            }
+        }
+        const infoboxTags = (SUBJECT_INFOBOX_KEYS[subjectData?.typeNum] || [])
+            .map(key => getInfoboxValue(subjectData?.infobox, key)).filter(Boolean);
+        const overrideTags = userTags
+            ? [collectionStatus, ...userTags].filter(Boolean)
+            : [collectionStatus, ...infoboxTags].filter(Boolean);
+        return { subjectData, subjectName, collectComment, cleanCommentHtml, username, avatarUrl, apiTime, rating, overrideTags };
+    }
+
+    async function createStatusShareImage(doc = document) {
+        const dark = doc.documentElement.getAttribute('data-theme') === 'dark';
+        const contentWin = doc.defaultView || window;
+        const { username, avatarUrl, postTime } = _getStatusAuthorInfo(doc);
+        const replyCount = doc.querySelectorAll('.subReply .reply_item').length;
+
+        const collectInfo = await _buildCollectionStatusInfo(doc, contentWin, username, avatarUrl, postTime);
+        if (collectInfo) {
+            const { subjectData, subjectName, collectComment, cleanCommentHtml, apiTime, rating, overrideTags } = collectInfo;
+            await _doShareCard({
+                username: '', postTime: '', avatarUrl: '', contentEl: null,
+                pureTitle: subjectName,
+                shareTitle: `${username}的收藏 - ${subjectName}`,
+                contentDoc: doc, contentWin, dark,
+                replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating }],
+                charImageUrl: subjectData?.imageUrl || '',
+                badgeLabel: subjectData?.type || '作品',
+                overrideTags,
+            });
+        } else {
+            const contentEl = doc.querySelector('.statusContent .text');
+            await _doShareCard({
+                username, postTime, avatarUrl, contentEl,
+                pureTitle: username + '的吐槽', contentDoc: doc, contentWin, dark,
+                noCardTitle: true,
+                overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
+            });
+        }
+    }
+
+    async function createStatusReplyShareImage(replyLi, doc = document) {
+        const dark = doc.documentElement.getAttribute('data-theme') === 'dark';
+        const contentWin = doc.defaultView || window;
+        const { username, avatarUrl, postTime } = _getStatusAuthorInfo(doc);
+
+        const replyUserEl = replyLi.querySelector('a.l[href*="/user/"]');
+        const replyUsername = replyUserEl?.textContent.trim() || '';
+        const replySlug = replyUserEl?.getAttribute('href')?.match(/\/user\/([^\/]+)/)?.[1] || '';
+        let replyAvatarUrl = '';
+        if (replySlug) {
+            const userInfo = await fetchBangumiAPI(`users/${replySlug}`);
+            replyAvatarUrl = userInfo?.avatar?.medium || userInfo?.avatar?.large || '';
+        }
+        let replyHtml = '';
+        let afterDash = false;
+        replyLi.childNodes.forEach(n => {
+            if (!afterDash) {
+                if (n.nodeType === 1 && n.tagName === 'SPAN' && n.classList.contains('tip_j')) afterDash = true;
+                return;
+            }
+            if (n.nodeType === 1 && n.classList?.contains(STATUS_REPLY_SHARE_BTN_CLASS)) return;
+            replyHtml += n.nodeType === 3 ? n.textContent : n.outerHTML;
+        });
+
+        const replyCount = doc.querySelectorAll('.subReply .reply_item').length;
+        const collectInfo = await _buildCollectionStatusInfo(doc, contentWin, username, avatarUrl, postTime);
+        if (collectInfo) {
+            const { subjectData, subjectName, collectComment, cleanCommentHtml, apiTime, rating, overrideTags } = collectInfo;
+            await _doShareCard({
+                username: '', postTime: '', avatarUrl: '', contentEl: null,
+                pureTitle: subjectName,
+                shareTitle: `${username}的收藏 - ${subjectName}`,
+                contentDoc: doc, contentWin, dark,
+                replies: [
+                    { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating },
+                    { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' },
+                ],
+                charImageUrl: subjectData?.imageUrl || '',
+                badgeLabel: subjectData?.type || '作品',
+                overrideTags,
+            });
+        } else {
+            const contentEl = doc.querySelector('.statusContent .text');
+            await _doShareCard({
+                username, postTime, avatarUrl, contentEl,
+                pureTitle: username + '的吐槽', contentDoc: doc, contentWin, dark,
+                noCardTitle: true,
+                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
+            });
+        }
+    }
+
+    const STATUS_REPLY_SHARE_BTN_CLASS = 'bgm-status-reply-share-btn';
+
+    const insertStatusReplyButtons = (doc = document) => {
+        if (!/\/user\/[^\/]+\/timeline\/status\/\d+/.test((doc.defaultView || window).location.pathname)) return;
+        doc.querySelectorAll('.subReply .reply_item').forEach(li => {
+            if (li.querySelector('.' + STATUS_REPLY_SHARE_BTN_CLASS)) return;
+            const btn = doc.createElement('a');
+            btn.href = 'javascript:void(0);';
+            btn.className = STATUS_REPLY_SHARE_BTN_CLASS;
+            btn.title = '分享回复';
+            btn.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle;opacity:0.6;';
+            btn.innerHTML = SHARE_SVG;
+            li.appendChild(btn);
+            btn.addEventListener('click', () => createStatusReplyShareImage(li, doc));
+        });
+    };
+
+    const insertStatusShareButton = (doc = document) => {
+        if (!/\/user\/[^\/]+\/timeline\/status\/\d+/.test((doc.defaultView || window).location.pathname)) return;
+        if (doc.getElementById('bgm-status-share-btn')) return;
+        const postActions = doc.querySelector('.statusContent .post_actions');
+        if (!postActions) return;
+        const btn = doc.createElement('a');
+        btn.id = 'bgm-status-share-btn';
+        btn.href = 'javascript:void(0);';
+        btn.title = '分享吐槽';
+        btn.style.cssText = 'color:inherit;display:inline-flex;align-items:center;margin-right:6px;opacity:0.75;';
+        btn.innerHTML = SHARE_SVG;
+        const dropdown = postActions.querySelector('.action.dropdown');
+        dropdown ? dropdown.after(btn) : postActions.appendChild(btn);
+        btn.addEventListener('click', () => createStatusShareImage(doc));
+    };
+
+    const TML_SHARE_BTN_CLASS = 'bgm-tml-share-btn';
+
+    function fetchStatusReplyCount(statusUrl) {
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: statusUrl,
+                onload: res => {
+                    if (res.status !== 200) { resolve(0); return; }
+                    const statusDoc = new DOMParser().parseFromString(res.responseText, 'text/html');
+                    resolve(statusDoc.querySelectorAll('.subReply .reply_item').length);
+                },
+                onerror: () => resolve(0),
+            });
+        });
+    }
+
+    function extractTimelineVia(postActionsEl) {
+        if (!postActionsEl) return '';
+        const smallEl = postActionsEl.querySelector('small.grey');
+        if (smallEl) return smallEl.textContent.trim();
+        const titleTip = postActionsEl.querySelector('.titleTip');
+        let node = titleTip ? titleTip.nextSibling : null;
+        while (node) {
+            if (node.nodeType === 3) {
+                const text = node.textContent.replace(/[\u00B7·\s]/g, '').trim();
+                if (text) return text;
+            }
+            node = node.nextSibling;
+        }
+        return '';
+    }
+
+    async function createTimelineShareImage(item, doc = document) {
+        const dark = doc.documentElement.getAttribute('data-theme') === 'dark';
+        const contentWin = doc.defaultView || window;
+        let userSlug = item.getAttribute('data-item-user') || '';
+        if (!userSlug) {
+            // Own-user timeline has data-item-user="" — extract from tml_comment href or page URL
+            userSlug = item.querySelector('.tml_comment')?.href?.match(/\/user\/([^\/]+)\/timeline/)?.[1]
+                || (doc.defaultView || window).location.pathname.match(/\/user\/([^\/]+)\/timeline/)?.[1]
+                || '';
+        }
+
+        const userLink = item.querySelector('.info a.l[href*="/user/"], .info_full a.l[href*="/user/"]');
+        let username = userLink?.textContent.trim() || '';
+
+        const _extractNeueAvatar = el => {
+            if (!el) return '';
+            const m = el.style.backgroundImage?.match(/url\(['"]?([^'"]+)['"]?\)/);
+            return m ? m[1].replace(/^\/\//, 'https://') : '';
+        };
+        let avatarUrl = _extractNeueAvatar(item.querySelector('.avatar .avatarNeue'));
+        if (!avatarUrl && userSlug) {
+            const siblingNeue = doc.querySelector(`.tml_item[data-item-user="${CSS.escape(userSlug)}"] .avatar .avatarNeue`);
+            avatarUrl = _extractNeueAvatar(siblingNeue);
+        }
+        // For .info_full items (timeline owner's entries), there is no username link or avatar span —
+        // always fetch from API so username is authoritative (not a stale DOM fallback).
+        const isInfoFull = !!item.querySelector('.info_full');
+        if ((isInfoFull || !avatarUrl || !username) && userSlug) {
+            const userInfo = await fetchBangumiAPI(`users/${userSlug}`);
+            if (!avatarUrl) avatarUrl = userInfo?.avatar?.medium || userInfo?.avatar?.large || '';
+            if (isInfoFull || !username) username = userInfo?.nickname || userInfo?.username || username;
+        }
+
+        const timeTip = item.querySelector('.post_actions .titleTip');
+        const postTimeRaw = timeTip?.getAttribute('data-original-title') || timeTip?.textContent.trim() || '';
+        const via = extractTimelineVia(item.querySelector('.post_actions'));
+        const postTime = postTimeRaw + (via ? `  via ${via}` : '');
+
+        const statusP = item.querySelector('.info p.status, .info_full p.status');
+        const collectComment = item.querySelector('.collectInfo .comment');
+        const blogLink = item.querySelector('.info a[href*="/blog/"], .info_full a[href*="/blog/"]');
+
+        if (statusP && statusP.textContent.trim()) {
+            const statusUrl = item.querySelector('.tml_comment')?.href;
+            const replyCount = statusUrl ? await fetchStatusReplyCount(statusUrl) : 0;
+            await _doShareCard({
+                username, postTime, avatarUrl,
+                contentEl: statusP,
+                pureTitle: username + '的吐槽',
+                contentDoc: doc, contentWin, dark,
+                noCardTitle: true,
+                overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
+            });
+        } else if (collectComment && collectComment.textContent.trim()) {
+            // Subject link is in .info, carries data-subject-id attribute
+            const subjectLink = item.querySelector('a[data-subject-id]');
+            const subjectId = subjectLink?.getAttribute('data-subject-id');
+
+            // Collection status ("看过"/"在看" etc.) is in the text node just before the subject link
+            let collectionStatus = '';
+            if (subjectLink) {
+                let node = subjectLink.previousSibling;
+                while (node) {
+                    if (node.nodeType === 3 && node.textContent.trim()) {
+                        collectionStatus = node.textContent.trim().replace(/了$/, '');
+                        break;
+                    }
+                    node = node.previousSibling;
+                }
+            }
+
+            // Extract user rating and clean comment HTML (remove star span)
+            const ratingEl = collectComment.querySelector('.starstop-s .starlight');
+            const domRating = parseInt(ratingEl?.className.match(/stars(\d+)/)?.[1] || '0');
+            const cleanCommentHtml = (() => {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = collectComment.innerHTML;
+                tmp.querySelector('.starstop-s')?.remove();
+                return tmp.innerHTML.trim();
+            })();
+
+            const statusUrl = item.querySelector('.tml_comment')?.href;
+            const statusUrlParsed = statusUrl ? new URL(statusUrl) : null;
+
+            if (subjectId) {
+                const subjectData = await fetchSubjectDataById(subjectId);
+                const subjectName = subjectData?.name || subjectLink?.textContent.trim() || '作品';
+
+                let rating = domRating;
+                let userTags = null;
+                let apiTime = postTime;
+
+                if (userSlug) {
+                    const collection = await fetchBangumiAPI(`users/${userSlug}/collections/${subjectId}`);
+                    if (collection) {
+                        rating = collection.rate || rating;
+                        if (collection.updated_at) {
+                            const d = new Date(collection.updated_at);
+                            const pad = n => String(n).padStart(2, '0');
+                            apiTime = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}` + (via ? `  via ${via}` : '');
+                        }
+                        if (collection.tags?.length > 0) userTags = collection.tags;
+                    }
+                }
+
+                const infoboxTags = (SUBJECT_INFOBOX_KEYS[subjectData?.typeNum] || [])
+                    .map(key => getInfoboxValue(subjectData?.infobox, key))
+                    .filter(Boolean);
+                const overrideTags = userTags
+                    ? [collectionStatus, ...userTags].filter(Boolean)
+                    : [collectionStatus, ...infoboxTags].filter(Boolean);
+
+                await _doShareCard({
+                    username: '', postTime: '', avatarUrl: '', contentEl: null,
+                    pureTitle: subjectName,
+                    shareTitle: `${username}的收藏 - ${subjectName}`,
+                    contentDoc: doc,
+                    contentWin: statusUrlParsed
+                        ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
+                        : { location: { origin: contentWin.location.origin, pathname: `/subject/${subjectId}` } },
+                    dark,
+                    replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating }],
+                    charImageUrl: subjectData?.imageUrl || '',
+                    badgeLabel: subjectData?.type || '作品',
+                    overrideTags,
+                });
+            } else {
+                await _doShareCard({
+                    username, postTime, avatarUrl,
+                    contentEl: collectComment,
+                    pureTitle: username + '的收藏',
+                    contentDoc: doc, contentWin, dark,
+                    noCardTitle: true,
+                    overrideTags: ['收藏'],
+                });
+            }
+        } else if (blogLink) {
+            const blogUrl = blogLink.href;
+            const blogHtml = await new Promise(resolve => {
+                GM_xmlhttpRequest({
+                    method: 'GET', url: blogUrl,
+                    onload: res => resolve(res.status === 200 ? res.responseText : null),
+                    onerror: () => resolve(null),
+                });
+            });
+            const blogDoc = blogHtml ? new DOMParser().parseFromString(blogHtml, 'text/html') : null;
+            const entryContent = blogDoc?.querySelector('#entry_content');
+            let contentEl = null;
+            if (entryContent) {
+                contentEl = document.createElement('div');
+                contentEl.innerHTML = entryContent.innerHTML;
+            }
+            let pureTitle = blogLink.textContent.trim();
+            let topicTitle = '';
+            let charImageUrl = '';
+            let badgeLabel = '';
+            const blogSubjectIds = blogDoc ? [...new Set(
+                [...blogDoc.querySelectorAll('a[href]')]
+                    .map(a => (a.getAttribute('href') || '').match(/\/subject\/(\d+)$/)?.[1])
+                    .filter(Boolean)
+            )] : [];
+            if (blogSubjectIds.length === 1) {
+                const subjectData = await fetchSubjectDataById(blogSubjectIds[0]);
+                if (subjectData) {
+                    topicTitle = pureTitle;
+                    pureTitle = subjectData.name || pureTitle;
+                    charImageUrl = subjectData.imageUrl || '';
+                    badgeLabel = subjectData.type || '';
+                }
+            }
+            const blogReplyCount = blogDoc?.querySelectorAll('[id^="post_"]').length || 0;
+            const subjectNamesFromBlog = blogDoc ? [...new Set(
+                [...blogDoc.querySelectorAll('a')]
+                    .filter(a => /\/subject\/\d+$/.test(a.getAttribute('href') || '') && a.textContent.trim())
+                    .map(a => a.textContent.trim())
+            )] : [];
+            const tagSubjects = subjectNamesFromBlog.length === 1 ? [] : subjectNamesFromBlog;
+            const overrideTags = [...tagSubjects, `${blogReplyCount} 回复`, '日志'];
+            const blogUrlParsed = new URL(blogUrl);
+            await _doShareCard({
+                username, postTime, avatarUrl,
+                contentEl,
+                pureTitle,
+                contentDoc: doc,
+                contentWin: { location: { origin: blogUrlParsed.origin, pathname: blogUrlParsed.pathname } },
+                dark,
+                charImageUrl, badgeLabel, topicTitle,
+                overrideTags,
+            });
+        }
+    }
+
+    const TML_REPLY_SHARE_BTN_CLASS = 'bgm-tml-reply-share-btn';
+
+    async function createTimelineReplyShareImage(replyLi, tmlItem, doc = document) {
+        const dark = doc.documentElement.getAttribute('data-theme') === 'dark';
+        const contentWin = doc.defaultView || window;
+
+        let userSlug = tmlItem.getAttribute('data-item-user') || '';
+        if (!userSlug) {
+            userSlug = tmlItem.querySelector('.tml_comment')?.href?.match(/\/user\/([^\/]+)\/timeline/)?.[1]
+                || (doc.defaultView || window).location.pathname.match(/\/user\/([^\/]+)\/timeline/)?.[1]
+                || '';
+        }
+        const userLink = tmlItem.querySelector('.info a.l[href*="/user/"], .info_full a.l[href*="/user/"]');
+        let username = userLink?.textContent.trim() || '';
+        const _extractNeueAvatar = el => {
+            if (!el) return '';
+            const m = el.style.backgroundImage?.match(/url\(['"]?([^'"]+)['"]?\)/);
+            return m ? m[1].replace(/^\/\//, 'https://') : '';
+        };
+        let avatarUrl = _extractNeueAvatar(tmlItem.querySelector('.avatar .avatarNeue'));
+        if (!avatarUrl && userSlug) {
+            const siblingNeue = doc.querySelector(`.tml_item[data-item-user="${CSS.escape(userSlug)}"] .avatar .avatarNeue`);
+            avatarUrl = _extractNeueAvatar(siblingNeue);
+        }
+        const isInfoFull = !!tmlItem.querySelector('.info_full');
+        if ((isInfoFull || !avatarUrl || !username) && userSlug) {
+            const userInfo = await fetchBangumiAPI(`users/${userSlug}`);
+            if (!avatarUrl) avatarUrl = userInfo?.avatar?.medium || userInfo?.avatar?.large || '';
+            if (isInfoFull || !username) username = userInfo?.nickname || userInfo?.username || username;
+        }
+
+        const statusP = tmlItem.querySelector('.info p.status, .info_full p.status');
+        const collectComment = tmlItem.querySelector('.collectInfo .comment');
+        const contentEl = statusP || collectComment;
+        const isCollect = !statusP && !!collectComment;
+
+        const timeTip = tmlItem.querySelector('.post_actions .titleTip');
+        const postTimeRaw = timeTip?.getAttribute('data-original-title') || timeTip?.textContent.trim() || '';
+        const via = extractTimelineVia(tmlItem.querySelector('.post_actions'));
+        const postTime = postTimeRaw + (via ? `  via ${via}` : '');
+
+        const replyUserEl = replyLi.querySelector('a.l[href*="/user/"]');
+        const replyUsername = replyUserEl?.textContent.trim() || '';
+        const replySlug = replyUserEl?.getAttribute('href')?.match(/\/user\/([^\/]+)/)?.[1] || '';
+        let replyAvatarUrl = '';
+        if (replySlug) {
+            const userInfo = await fetchBangumiAPI(`users/${replySlug}`);
+            replyAvatarUrl = userInfo?.avatar?.medium || userInfo?.avatar?.large || '';
+        }
+
+        let replyHtml = '';
+        let afterDash = false;
+        replyLi.childNodes.forEach(n => {
+            if (!afterDash) {
+                if (n.nodeType === 1 && n.tagName === 'SPAN' && n.classList.contains('tip_j')) afterDash = true;
+                return;
+            }
+            if (n.nodeType === 1 && n.classList?.contains(TML_REPLY_SHARE_BTN_CLASS)) return;
+            replyHtml += n.nodeType === 3 ? n.textContent : n.outerHTML;
+        });
+
+        const statusUrl = tmlItem.querySelector('.tml_comment')?.href;
+        const statusUrlParsed = statusUrl ? new URL(statusUrl) : null;
+        const replyCount = tmlItem.querySelectorAll('.subReply .reply_item').length;
+
+        if (isCollect) {
+            const subjectLink = tmlItem.querySelector('a[data-subject-id]');
+            const subjectId = subjectLink?.getAttribute('data-subject-id');
+            let collectionStatus = '';
+            if (subjectLink) {
+                let node = subjectLink.previousSibling;
+                while (node) {
+                    if (node.nodeType === 3 && node.textContent.trim()) { collectionStatus = node.textContent.trim().replace(/了$/, ''); break; }
+                    node = node.previousSibling;
+                }
+            }
+            const ratingEl = collectComment.querySelector('.starstop-s .starlight');
+            const domRating = parseInt(ratingEl?.className.match(/stars(\d+)/)?.[1] || '0');
+            const cleanCommentHtml = (() => {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = collectComment.innerHTML;
+                tmp.querySelector('.starstop-s')?.remove();
+                return tmp.innerHTML.trim();
+            })();
+
+            if (subjectId) {
+                const subjectData = await fetchSubjectDataById(subjectId);
+                const subjectName = subjectData?.name || subjectLink?.textContent.trim() || '作品';
+                let rating = domRating;
+                let userTags = null;
+                let apiTime = postTime;
+                if (userSlug) {
+                    const collection = await fetchBangumiAPI(`users/${userSlug}/collections/${subjectId}`);
+                    if (collection) {
+                        rating = collection.rate || rating;
+                        if (collection.updated_at) {
+                            const d = new Date(collection.updated_at);
+                            const pad = n => String(n).padStart(2, '0');
+                            apiTime = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}` + (via ? `  via ${via}` : '');
+                        }
+                        if (collection.tags?.length > 0) userTags = collection.tags;
+                    }
+                }
+                const infoboxTags = (SUBJECT_INFOBOX_KEYS[subjectData?.typeNum] || [])
+                    .map(key => getInfoboxValue(subjectData?.infobox, key))
+                    .filter(Boolean);
+                const overrideTags = userTags
+                    ? [collectionStatus, ...userTags].filter(Boolean)
+                    : [collectionStatus, ...infoboxTags].filter(Boolean);
+                await _doShareCard({
+                    username: '', postTime: '', avatarUrl: '', contentEl: null,
+                    pureTitle: subjectName,
+                    shareTitle: `${username}的收藏 - ${subjectName}`,
+                    contentDoc: doc,
+                    contentWin: statusUrlParsed
+                        ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
+                        : { location: { origin: contentWin.location.origin, pathname: `/subject/${subjectId}` } },
+                    dark,
+                    replies: [
+                        { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating },
+                        { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' },
+                    ],
+                    charImageUrl: subjectData?.imageUrl || '',
+                    badgeLabel: subjectData?.type || '作品',
+                    overrideTags,
+                });
+            } else {
+                await _doShareCard({
+                    username, postTime, avatarUrl,
+                    contentEl: collectComment,
+                    pureTitle: username + '的收藏',
+                    contentDoc: doc,
+                    contentWin: statusUrlParsed
+                        ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
+                        : contentWin,
+                    dark, noCardTitle: true,
+                    replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                    overrideTags: ['收藏'],
+                });
+            }
+        } else {
+            await _doShareCard({
+                username, postTime, avatarUrl,
+                contentEl,
+                pureTitle: username + '的吐槽',
+                contentDoc: doc,
+                contentWin: statusUrlParsed
+                    ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
+                    : contentWin,
+                dark, noCardTitle: true,
+                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
+            });
+        }
+    }
+
+    const insertTimelineShareButtons = (doc = document) => {
+        doc.querySelectorAll('.tml_item').forEach(item => {
+            if (item.querySelector('.' + TML_SHARE_BTN_CLASS)) return;
+
+            const statusP = item.querySelector('.info p.status, .info_full p.status');
+            const collectComment = item.querySelector('.collectInfo .comment');
+            const blogLink = item.querySelector('.info a[href*="/blog/"], .info_full a[href*="/blog/"]');
+            const hasContent = (statusP?.textContent.trim()) || (collectComment?.textContent.trim()) || blogLink;
+            if (!hasContent) return;
+
+            const postActions = item.querySelector('.post_actions');
+            if (!postActions) return;
+
+            const btn = doc.createElement('a');
+            btn.href = 'javascript:void(0);';
+            btn.className = TML_SHARE_BTN_CLASS;
+            btn.title = '分享';
+            btn.style.cssText = 'color:inherit;display:inline-flex;align-items:center;margin-right:6px;opacity:0.75;cursor:pointer;';
+            btn.innerHTML = SHARE_SVG;
+
+            const dropdown = postActions.querySelector('.action.dropdown');
+            dropdown ? dropdown.after(btn) : postActions.prepend(btn);
+
+            btn.addEventListener('click', () => createTimelineShareImage(item, doc));
+        });
+
+        doc.querySelectorAll('.tml_item').forEach(item => {
+            if (!item.querySelector('.info p.status, .info_full p.status') && !item.querySelector('.collectInfo .comment')) return;
+            item.querySelectorAll('.subReply .reply_item').forEach(li => {
+                if (li.querySelector('.' + TML_REPLY_SHARE_BTN_CLASS)) return;
+                const btn = doc.createElement('a');
+                btn.href = 'javascript:void(0);';
+                btn.className = TML_REPLY_SHARE_BTN_CLASS;
+                btn.title = '分享回复';
+                btn.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle;opacity:0.6;cursor:pointer;';
+                btn.innerHTML = SHARE_SVG;
+                li.appendChild(btn);
+                btn.addEventListener('click', () => createTimelineReplyShareImage(li, item, doc));
+            });
+        });
+    };
+
+    const observeTimeline = (doc = document) => {
+        const root = doc.querySelector('#columnTimelineA') || doc.querySelector('#main') || doc.body;
+        if (!root) return;
+        let debounce = null;
+        const obs = new MutationObserver(() => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => insertTimelineShareButtons(doc), 150);
+        });
+        obs.observe(root, { childList: true, subtree: true });
+    };
+
     const observeReplies = (targetDoc) => {
         const observer = new MutationObserver(() => {
             insertReplyButtons(targetDoc);
@@ -1794,7 +2446,7 @@
         };
         rightFrame.addEventListener('load', onRightFrameLoad);
     } else {
-        setTimeout(() => { insertButton(); insertReplyButtons(); insertSubjectCommentButtons(); insertCollectionPageButtons(); insertBrowserListButtons(); insertMyCollectionShareButton(); observeReplies(document); }, 500);
+        setTimeout(() => { insertButton(); insertReplyButtons(); insertSubjectCommentButtons(); insertCollectionPageButtons(); insertBrowserListButtons(); insertMyCollectionShareButton(); insertStatusShareButton(); insertStatusReplyButtons(); insertTimelineShareButtons(); observeTimeline(); observeReplies(document); }, 500);
     }
 
     checkOAuthCallback();
