@@ -1,0 +1,7 @@
+name = "bgm-oauth-proxy"
+main = "src/Bangumi_Topic_Share_API_Oauth.js"
+compatibility_date = "2024-01-01"
+
+# Set these as secrets via: wrangler secret put BGM_CLIENT_ID
+# wrangler secret put BGM_CLIENT_SECRET
+# wrangler secret put BGM_REDIRECT_URI

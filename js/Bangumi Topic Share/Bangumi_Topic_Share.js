@@ -2,7 +2,7 @@
 // @name         Bangumi Topic Share
 // @namespace    http://tampermonkey.net/
 // @version      6.2
-// @description  Bangumi 话题/日志分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
+// @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
 // @match        *://bgm.tv/group/topic/*
