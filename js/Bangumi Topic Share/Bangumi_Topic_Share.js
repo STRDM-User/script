@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
-// @namespace    http://tampermonkey.net/
-// @version      6.2
+// @namespace    https://greasyfork.org/scripts/574689
+// @version      6.3
 // @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -695,7 +695,7 @@
                 try {
                     const cw = contentDoc.defaultView || window;
                     const sampleQuoteQ = contentDoc.querySelector('.quote q');
-                    const sampleBody = contentDoc.querySelector('.cmt_sub_content') || contentDoc.querySelector('.reply_content .message') || contentDoc.querySelector('.topic_content');
+                    const sampleBody = contentDoc.querySelector('.reply_content .message') || contentDoc.querySelector('.topic_content');
                     if (sampleQuoteQ) {
                         const quoteColor = cw.getComputedStyle(sampleQuoteQ).color;
                         if (quoteColor) quoteCss += `.quote,.quote q{color:${quoteColor} !important;}`;
