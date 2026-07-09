@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    https://greasyfork.org/scripts/574689
-// @version      6.3
-// @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、可选 AI 标签
+// @version      6.4
+// @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、贴贴反应展示、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
 // @match        *://bgm.tv/group/topic/*
@@ -253,6 +253,12 @@
         .content-text img.smile-dynamic { display: inline !important; height: 3em !important; width: auto !important; vertical-align: baseline; }
         .content-text img:not([data-bgm-emoji]):not(.bmoji-image):not(.smile-dynamic) { max-width: 100%; height: auto; border-radius: 4px; margin: 4px 0; display: block; }
         [data-bgm-mask] { display: inline; background-color: #555; color: #555; border-radius: 2px; padding: 0 5px; position: relative; transition: color 0.5s linear; }
+        .reactions-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .reaction-item { display: inline-flex; align-items: center; gap: 4px; background: #f2f2f2; border: 1px solid #ebebeb; border-radius: 20px; padding: 2px 9px 2px 7px; line-height: 1; }
+        .reaction-item img { height: 18px; width: auto; display: block; }
+        .reaction-num { font-size: 12px; color: #888; font-weight: bold; }
+        .share-card.dark .reaction-item { background: #2a2a2a; border: 1px solid rgba(255,255,255,0.08); }
+        .share-card.dark .reaction-num { color: #aaa; }
     `;
     document.head.appendChild(style);
 
@@ -440,7 +446,7 @@
     // contentDoc: the document containing the topic (may be an iframe's doc on Rakuen)
     // Overlay is always rendered in the outer document (where GM functions are available)
     async function _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark,
-                                   replies = [], replyId = '', charImageUrl = '', badgeLabel = '', overrideTags = null, topicTitle = '', noCardTitle = false, shareTitle = '' }) {
+                                   replies = [], replyId = '', charImageUrl = '', badgeLabel = '', overrideTags = null, topicTitle = '', noCardTitle = false, shareTitle = '', mainReactions = [] }) {
         if (document.getElementById('bgm-share-overlay')) return;
         if (typeof html2canvas === 'undefined') {
             alert("截图库加载失败，请刷新页面或检查网络。");
@@ -485,6 +491,22 @@
             ...replies.map(r => inlineImages(r.contentHtml || r.content))
         ]);
 
+        const reactionIconUrls = [...new Set([
+            ...mainReactions.map(r => r.icon),
+            ...replies.flatMap(r => (r.reactions || []).map(x => x.icon))
+        ].filter(Boolean))];
+        const reactionB64 = {};
+        await Promise.all(reactionIconUrls.map(async u => { reactionB64[u] = await fetchAsBase64(u); }));
+        const renderReactions = (arr) => {
+            if (!arr || !arr.length) return '';
+            const items = arr.map(r => {
+                const b64 = reactionB64[r.icon];
+                if (!b64) return '';
+                return `<span class="reaction-item"><img src="${b64}">${r.count ? `<span class="reaction-num">${r.count}</span>` : ''}</span>`;
+            }).join('');
+            return items ? `<div class="reactions-row">${items}</div>` : '';
+        };
+
         const tagsHtml = tags.map(tag => tag.startsWith('!') ? `<span class="tag-item">${tag.slice(1)}</span>` : `<span class="tag-item"># ${tag}</span>`).join('');
         const divider = dark ? 'rgba(255,255,255,0.1)' : '#eee';
         const hasMainContent = !!inlinedMainContent || !!username;
@@ -506,6 +528,7 @@
                     <span style="color:#aaa;font-size:${12 - idx}px;">${r.time}</span>
                 </div>
                 <div class="content-box"><div class="content-text" style="font-size:${14 - idx}px;">${inlinedReplyContents[idx]}</div></div>
+                ${renderReactions(r.reactions)}
                 ${inner}
             </div>`;
         };
@@ -536,6 +559,7 @@
                         ${(base64CharImage || badgeLabel || noCardTitle) ? '' : `<h1 class="main-title">${pureTitle}</h1>`}
                         ${topicTitle ? `<h2 class="topic-sub-title">${topicTitle}</h2>` : ''}
                         ${inlinedMainContent ? `<div class="content-box"><div class="content-text">${inlinedMainContent}</div></div>` : ''}
+                        ${renderReactions(mainReactions)}
                         ${replySection}
                         <div class="tags-container">${tagsHtml}</div>
                     </div>
@@ -1068,7 +1092,8 @@
             username, userSlug, avatarUrl,
             time: domTime, rating: 0, collectionStatus,
             content: truncated ? rawText.substring(0, 150) + '...' : rawText,
-            contentHtml
+            contentHtml,
+            reactions: extractReactions(itemEl, itemEl.ownerDocument)
         };
     }
 
@@ -1147,7 +1172,7 @@
         }
         const truncated = rawText.length > 150;
         const contentHtml = truncated ? rawText.substring(0, 150) + '...' : rawText;
-        return { username, userSlug, avatarUrl, rating, time, content: contentHtml, contentHtml };
+        return { username, userSlug, avatarUrl, rating, time, content: contentHtml, contentHtml, reactions: extractReactions(itemEl, itemEl.ownerDocument) };
     }
 
     const COLLECTION_PAGE_STATUS = { collections: '看过', wishes: '想看', doings: '在看', on_hold: '搁置', dropped: '抛弃' };
@@ -1204,7 +1229,7 @@
         const subjectTopicId = getSubjectIdFromTopicPage(contentWin.location.pathname, contentDoc);
         const isSubjectTopic = !!subjectTopicId;
 
-        let username, postTime, avatarUrl, contentEl;
+        let username, postTime, avatarUrl, contentEl, mainReactions = [];
         if (isEpisode || isCharacter || isPerson) {
             username = ""; postTime = ""; avatarUrl = ""; contentEl = null;
         } else if (isBlog) {
@@ -1225,6 +1250,7 @@
             const avatarBox = firstPost?.querySelector('.avatarSize48');
             avatarUrl = avatarBox ? contentWin.getComputedStyle(avatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
             contentEl = firstPost?.querySelector('.topic_content') || firstPost?.querySelector('.inner');
+            mainReactions = extractReactions(firstPost, contentDoc);
         }
 
         const h1Node = contentDoc.querySelector('#pageHeader h1') || contentDoc.querySelector('h1.title') || contentDoc.querySelector('h1.nameSingle a') || contentDoc.querySelector('h1');
@@ -1288,7 +1314,7 @@
                 }
             }
         }
-        await _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark, charImageUrl, badgeLabel, topicTitle });
+        await _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark, charImageUrl, badgeLabel, topicTitle, mainReactions });
     }
 
     function truncateHtml(html, limit) {
@@ -1310,6 +1336,35 @@
         };
         [...tmp.childNodes].forEach(c => walk(c));
         return tmp.innerHTML;
+    }
+
+    // Extract "贴贴" reactions for a post/reply from its .likes_grid display container.
+    // Grid id mirrors the post id: post_{N} -> likes_grid_{N}. Icons are CSS background-images.
+    function extractReactions(postEl, contentDoc) {
+        if (!postEl) return [];
+        const doc = contentDoc || postEl.ownerDocument || document;
+        const win = doc.defaultView || window;
+        let grid = null;
+        if (postEl.classList?.contains('likes_grid')) {
+            grid = postEl;
+        } else {
+            const idMatch = (postEl.id || '').match(/^post_(\d+)$/);
+            if (idMatch) grid = doc.getElementById('likes_grid_' + idMatch[1]);
+            if (!grid) grid = postEl.querySelector('.likes_grid');
+        }
+        if (!grid) return [];
+        return [...grid.querySelectorAll('a.item')].map(item => {
+            const emojiSpan = item.querySelector('.emoji');
+            let icon = '';
+            if (emojiSpan) {
+                const bg = win.getComputedStyle(emojiSpan).backgroundImage || '';
+                const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+                if (m && m[1] !== 'none') icon = m[1];
+                if (!icon) { const img = emojiSpan.querySelector('img'); if (img) icon = img.src; }
+            }
+            const count = item.querySelector('.num')?.textContent.trim() || '';
+            return icon ? { icon, count } : null;
+        }).filter(Boolean);
     }
 
     function extractPostInfo(postEl, contentWin) {
@@ -1351,7 +1406,8 @@
         const contentHtml = truncated
             ? savedQuoteHtml + truncateHtml(bodyClone?.innerHTML?.trim() || "", 150)
             : (contentEl?.innerHTML?.trim() || "");
-        return { username, time, avatarUrl, content: truncated ? rawText.substring(0, 150) + "..." : rawText, contentHtml };
+        const reactions = extractReactions(postEl, postEl.ownerDocument);
+        return { username, time, avatarUrl, content: truncated ? rawText.substring(0, 150) + "..." : rawText, contentHtml, reactions };
     }
 
     async function createReplyShareImage(replyEl, contentDoc = document) {
@@ -1365,7 +1421,7 @@
         const isPerson = /\/person\/\d+|\/rakuen\/topic\/prsn\/\d+/.test(contentWin.location.pathname);
         const subjectTopicId = getSubjectIdFromTopicPage(contentWin.location.pathname, contentDoc);
         const isSubjectTopic = !!subjectTopicId;
-        let username, postTime, avatarUrl, contentEl;
+        let username, postTime, avatarUrl, contentEl, mainReactions = [];
         if (isEpisode || isCharacter || isPerson) {
             username = ""; postTime = ""; avatarUrl = ""; contentEl = null;
         } else if (isBlog) {
@@ -1385,6 +1441,7 @@
             const mainAvatarBox = firstPost?.querySelector('.avatarSize48');
             avatarUrl = mainAvatarBox ? contentWin.getComputedStyle(mainAvatarBox).backgroundImage.replace(/url\(["']?([^"']+)["']?\)/, '$1') : "";
             contentEl = firstPost?.querySelector('.topic_content') || firstPost?.querySelector('.inner');
+            mainReactions = extractReactions(firstPost, contentDoc);
         }
 
         // Build replies chain: if sub-reply, prepend the parent reply first
@@ -1457,7 +1514,7 @@
             }
         }
         await _doShareCard({ username, postTime, avatarUrl, contentEl, pureTitle, contentDoc, contentWin, dark,
-            replies, replyId: replyEl.id, charImageUrl, badgeLabel, topicTitle });
+            replies, replyId: replyEl.id, charImageUrl, badgeLabel, topicTitle, mainReactions });
     }
 
     const REPLY_SHARE_BTN_CLASS = 'bgm-reply-share-btn';
@@ -1873,6 +1930,7 @@
         const contentWin = doc.defaultView || window;
         const { username, avatarUrl, postTime } = _getStatusAuthorInfo(doc);
         const replyCount = doc.querySelectorAll('.subReply .reply_item').length;
+        const statusReactions = _extractStatusMainReactions(doc);
 
         const collectInfo = await _buildCollectionStatusInfo(doc, contentWin, username, avatarUrl, postTime);
         if (collectInfo) {
@@ -1882,7 +1940,7 @@
                 pureTitle: subjectName,
                 shareTitle: `${username}的收藏 - ${subjectName}`,
                 contentDoc: doc, contentWin, dark,
-                replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating }],
+                replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating, reactions: statusReactions }],
                 charImageUrl: subjectData?.imageUrl || '',
                 badgeLabel: subjectData?.type || '作品',
                 overrideTags,
@@ -1893,9 +1951,18 @@
                 username, postTime, avatarUrl, contentEl,
                 pureTitle: username + '的吐槽', contentDoc: doc, contentWin, dark,
                 noCardTitle: true,
+                mainReactions: statusReactions,
                 overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
             });
         }
+    }
+
+    // Status detail page (/timeline/status/N): reactions for the main status live in a
+    // .likes_grid outside the reply list; pick the first one not inside a .reply_item.
+    function _extractStatusMainReactions(doc) {
+        const scope = doc.querySelector('.statusContent') || doc;
+        const grid = [...scope.querySelectorAll('.likes_grid')].find(g => !g.closest('.reply_item'));
+        return grid ? extractReactions(grid, doc) : [];
     }
 
     async function createStatusReplyShareImage(replyLi, doc = document) {
@@ -1923,6 +1990,8 @@
         });
 
         const replyCount = doc.querySelectorAll('.subReply .reply_item').length;
+        const statusReactions = _extractStatusMainReactions(doc);
+        const replyReactions = extractReactions(replyLi, doc);
         const collectInfo = await _buildCollectionStatusInfo(doc, contentWin, username, avatarUrl, postTime);
         if (collectInfo) {
             const { subjectData, subjectName, collectComment, cleanCommentHtml, apiTime, rating, overrideTags } = collectInfo;
@@ -1932,8 +2001,8 @@
                 shareTitle: `${username}的收藏 - ${subjectName}`,
                 contentDoc: doc, contentWin, dark,
                 replies: [
-                    { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating },
-                    { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' },
+                    { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating, reactions: statusReactions },
+                    { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '', reactions: replyReactions },
                 ],
                 charImageUrl: subjectData?.imageUrl || '',
                 badgeLabel: subjectData?.type || '作品',
@@ -1945,7 +2014,8 @@
                 username, postTime, avatarUrl, contentEl,
                 pureTitle: username + '的吐槽', contentDoc: doc, contentWin, dark,
                 noCardTitle: true,
-                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                mainReactions: statusReactions,
+                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '', reactions: replyReactions }],
                 overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
             });
         }
@@ -2058,6 +2128,7 @@
         const statusP = item.querySelector('.info p.status, .info_full p.status');
         const collectComment = item.querySelector('.collectInfo .comment');
         const blogLink = item.querySelector('.info a[href*="/blog/"], .info_full a[href*="/blog/"]');
+        const itemReactions = extractReactions(item, doc);
 
         if (statusP && statusP.textContent.trim()) {
             const statusUrl = item.querySelector('.tml_comment')?.href;
@@ -2069,6 +2140,7 @@
                 contentDoc: doc, contentWin, dark,
                 noCardTitle: true,
                 overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
+                mainReactions: itemReactions,
             });
         } else if (collectComment && collectComment.textContent.trim()) {
             // Subject link is in .info, carries data-subject-id attribute
@@ -2138,7 +2210,7 @@
                         ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
                         : { location: { origin: contentWin.location.origin, pathname: `/subject/${subjectId}` } },
                     dark,
-                    replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating }],
+                    replies: [{ username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating, reactions: itemReactions }],
                     charImageUrl: subjectData?.imageUrl || '',
                     badgeLabel: subjectData?.type || '作品',
                     overrideTags,
@@ -2151,6 +2223,7 @@
                     contentDoc: doc, contentWin, dark,
                     noCardTitle: true,
                     overrideTags: ['收藏'],
+                    mainReactions: itemReactions,
                 });
             }
         } else if (blogLink) {
@@ -2205,6 +2278,7 @@
                 dark,
                 charImageUrl, badgeLabel, topicTitle,
                 overrideTags,
+                mainReactions: itemReactions,
             });
         }
     }
@@ -2273,6 +2347,8 @@
         const statusUrl = tmlItem.querySelector('.tml_comment')?.href;
         const statusUrlParsed = statusUrl ? new URL(statusUrl) : null;
         const replyCount = tmlItem.querySelectorAll('.subReply .reply_item').length;
+        const itemReactions = extractReactions(tmlItem, doc);
+        const replyReactions = extractReactions(replyLi, doc);
 
         if (isCollect) {
             const subjectLink = tmlItem.querySelector('a[data-subject-id]');
@@ -2328,8 +2404,8 @@
                         : { location: { origin: contentWin.location.origin, pathname: `/subject/${subjectId}` } },
                     dark,
                     replies: [
-                        { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating },
-                        { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' },
+                        { username, avatarUrl, content: collectComment.innerText?.trim() || '', contentHtml: cleanCommentHtml, time: apiTime, rating, reactions: itemReactions },
+                        { username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '', reactions: replyReactions },
                     ],
                     charImageUrl: subjectData?.imageUrl || '',
                     badgeLabel: subjectData?.type || '作品',
@@ -2345,7 +2421,8 @@
                         ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
                         : contentWin,
                     dark, noCardTitle: true,
-                    replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                    mainReactions: itemReactions,
+                    replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '', reactions: replyReactions }],
                     overrideTags: ['收藏'],
                 });
             }
@@ -2359,7 +2436,8 @@
                     ? { location: { origin: statusUrlParsed.origin, pathname: statusUrlParsed.pathname } }
                     : contentWin,
                 dark, noCardTitle: true,
-                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '' }],
+                mainReactions: itemReactions,
+                replies: [{ username: replyUsername, avatarUrl: replyAvatarUrl, content: replyHtml.trim(), contentHtml: replyHtml.trim(), time: '', reactions: replyReactions }],
                 overrideTags: replyCount ? [`${replyCount} 回复`, '吐槽'] : ['吐槽'],
             });
         }
