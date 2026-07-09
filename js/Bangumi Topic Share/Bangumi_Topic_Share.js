@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    https://greasyfork.org/scripts/574689
-// @version      6.4
+// @version      6.5
 // @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、贴贴反应展示、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -547,7 +547,7 @@
             <div id="capture-area" style="padding: 4px; background: transparent;">
                 <div class="share-card${dark ? ' dark' : ''}">
                     <div class="card-top-bar"></div>
-                    ${base64CharImage ? `<div style="display:flex;align-items:stretch;"><div style="flex:1;padding:22px 20px 14px 25px;display:flex;flex-direction:column;justify-content:center;min-height:150px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:0;height:1px;background:linear-gradient(to right,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 0%,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 60%,transparent 100%);"></div></div><div style="position:relative;width:130px;flex-shrink:0;min-height:150px;overflow:hidden;background-color:${dark ? '#2a2a2a' : '#f9f5f5'};"><div style="position:absolute;top:0;left:0;right:0;bottom:0;background-image:url('${base64CharImage}');background-size:cover;background-position:center top;background-repeat:no-repeat;"></div><div style="position:absolute;top:0;left:-1px;right:0;bottom:-1px;background:linear-gradient(to right,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%),linear-gradient(to top,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%);"></div></div></div>` : badgeLabel ? `<div style="padding:22px 25px 14px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:25px;height:1px;background:${dark ? 'rgba(255,255,255,0.1)' : '#eee'};"></div></div>` : ''}
+                    ${base64CharImage ? `<div style="display:flex;align-items:stretch;"><div style="flex:1;padding:22px 20px 14px 25px;display:flex;flex-direction:column;justify-content:center;min-height:150px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:0;height:1px;background:linear-gradient(to right,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 0%,${dark ? 'rgba(255,255,255,0.15)' : '#ddd'} 60%,transparent 100%);"></div></div><div style="position:relative;width:130px;flex-shrink:0;min-height:150px;overflow:hidden;background-color:${dark ? '#2a2a2a' : '#f9f5f5'};"><img src="${base64CharImage}" class="bgm-cover-img" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center top;"><div style="position:absolute;top:0;left:-1px;right:0;bottom:-1px;background:linear-gradient(to right,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%),linear-gradient(to top,${dark ? '#1e1e1e' : '#fff'} 0%,${dark ? 'rgba(30,30,30,0)' : 'rgba(255,255,255,0)'} 20%);"></div></div></div>` : badgeLabel ? `<div style="padding:22px 25px 14px;position:relative;"><div style="font-size:22px;font-weight:800;color:${dark ? '#f0f0f0' : '#111'};line-height:1.3;">${pureTitle}</div><div style="margin-top:10px;"><span style="background:${dark ? '#2a2a2a' : '#FEEFF0'};color:#F09199;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:bold;border:1px solid ${dark ? '#F0919966' : '#F0919944'};">${badgeLabel}</span></div><div style="position:absolute;bottom:0;left:25px;right:25px;height:1px;background:${dark ? 'rgba(255,255,255,0.1)' : '#eee'};"></div></div>` : ''}
                     ${username ? `<div class="card-header" style="">
                         <img class="avatar-img" src="${base64Avatar}">
                         <div class="user-meta">
@@ -679,6 +679,41 @@
                 const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000));
                 const captureEl = document.querySelector('#capture-area');
 
+                // html2canvas ignores object-fit, so a cover image would be stretched to fill the box.
+                // Cover-crop the cover to its box (object-position: center top) at 2x on the LIVE, already
+                // laid-out card (measuring inside the fresh iframe races on a cold first open, yielding a
+                // 0-size box → crop skipped → stretched image). The cropped result is applied to the
+                // iframe clone below. Recomputed from the original base64 each time, so it stays idempotent.
+                let croppedCover = '';
+                if (base64CharImage) {
+                    const liveCover = captureEl.querySelector('.bgm-cover-img');
+                    if (liveCover) {
+                        const box = liveCover.getBoundingClientRect();
+                        const bw = box.width, bh = box.height;
+                        const src = new Image();
+                        await new Promise(res => { src.onload = res; src.onerror = res; src.src = base64CharImage; });
+                        const iw = src.naturalWidth, ih = src.naturalHeight;
+                        if (iw && ih && bw && bh) {
+                            const s = 2;
+                            const cnv = document.createElement('canvas');
+                            cnv.width = Math.round(bw * s);
+                            cnv.height = Math.round(bh * s);
+                            const ctx = cnv.getContext('2d');
+                            ctx.imageSmoothingEnabled = true;
+                            ctx.imageSmoothingQuality = 'high';
+                            const boxAspect = bw / bh, imgAspect = iw / ih;
+                            let sx, sy, sw, sh;
+                            if (imgAspect > boxAspect) { // wider than box: crop sides, keep full height, center
+                                sh = ih; sw = ih * boxAspect; sx = (iw - sw) / 2; sy = 0;
+                            } else { // taller than box: crop bottom, keep full width, top-aligned
+                                sw = iw; sh = iw / boxAspect; sx = 0; sy = 0;
+                            }
+                            ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cnv.width, cnv.height);
+                            croppedCover = cnv.toDataURL('image/png');
+                        }
+                    }
+                }
+
                 iframe = document.createElement('iframe');
                 iframe.style.cssText = 'position:fixed;top:0;left:0;border:0;opacity:0;pointer-events:none;z-index:99999;';
                 iframe.style.width = captureEl.offsetWidth + 'px';
@@ -733,6 +768,12 @@
                 iDoc.head.appendChild(iStyle);
                 iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;display:inline-block;';
                 iDoc.body.innerHTML = captureEl.innerHTML;
+
+                // Apply the pre-cropped cover (computed on the live card above) to the iframe clone.
+                if (croppedCover) {
+                    const ic = iDoc.querySelector('.bgm-cover-img');
+                    if (ic) { ic.src = croppedCover; ic.style.objectFit = 'fill'; }
+                }
 
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
@@ -961,7 +1002,7 @@
         }
         const subject = await fetchBangumiAPI(`subjects/${ep.subject_id}`);
         let subjectName = subject?.name_cn || subject?.name || '';
-        let subjectImageUrl = subject?.images?.medium || subject?.images?.common || '';
+        let subjectImageUrl = subject?.images?.common || subject?.images?.large || subject?.images?.medium || '';
         if (!subject) {
             _shareNotice = 'NSFW 条目 API 无权访问，已降级为页面数据，部分信息可能不完整';
             const subjectLink = document.querySelector('#headerSubject a[href*="/subject/"]') || document.querySelector('a.cover[href*="/subject/"]');
@@ -1032,7 +1073,7 @@
         const typeMap = { 1: '书籍', 2: '动画', 3: '音乐', 4: '游戏', 6: '三次元' };
         const result = {
             name: data.name_cn || data.name || '',
-            imageUrl: data.images?.medium || data.images?.common || '',
+            imageUrl: data.images?.common || data.images?.large || data.images?.medium || '',
             type: typeMap[data.type] || '作品',
             typeNum: data.type,
             infobox: data.infobox || []
