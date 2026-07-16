@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bangumi Topic Share
 // @namespace    https://greasyfork.org/scripts/574689
-// @version      6.5
+// @version      6.6
 // @description  Bangumi 分享工具：生成分享卡片，支持图片复制/下载、一键复制分享文案、贴贴反应展示、可选 AI 标签
 // @author       Stardream
 // @contributor  Chang ji, Mewtw0
@@ -53,6 +53,7 @@
 // @match        *://bgm.tv/
 // @match        *://bangumi.tv/
 // @match        *://chii.in/
+// @icon         https://bgm.tv/img/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -586,6 +587,9 @@
                 <button id="bgm-mask-btn" class="bgm-action-btn" data-tip="显示剧透">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
+                <button id="bgm-reactions-btn" class="bgm-action-btn" data-tip="隐藏贴贴">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                </button>
             </div>
             </div>
         `;
@@ -598,16 +602,22 @@
 
         let cancelled = false;
         let maskRevealed = false;
+        let reactionsHidden = !GM_getValue('bgm_share_show_reactions', true);
         let currentCanvas = null;
 
         const maskPreviewStyle = document.createElement('style');
         document.head.appendChild(maskPreviewStyle);
+        const reactionsPreviewStyle = document.createElement('style');
+        document.head.appendChild(reactionsPreviewStyle);
 
         const copyBtn = document.getElementById('bgm-copy-btn');
         const downloadBtn = document.getElementById('bgm-download-btn');
 
         const hasMask = !!document.querySelector('#capture-area [data-bgm-mask]');
         if (!hasMask) document.getElementById('bgm-mask-btn').style.display = 'none';
+
+        const hasReactions = !!document.querySelector('#capture-area .reactions-row');
+        if (!hasReactions) document.getElementById('bgm-reactions-btn').style.display = 'none';
 
         const updateMaskPreview = () => {
             maskPreviewStyle.textContent = maskRevealed
@@ -618,10 +628,20 @@
         };
         updateMaskPreview();
 
+        const updateReactionsPreview = () => {
+            reactionsPreviewStyle.textContent = reactionsHidden
+                ? '#capture-area .reactions-row { display: none !important; }'
+                : '';
+            const btn = document.getElementById('bgm-reactions-btn');
+            if (btn) btn.setAttribute('data-tip', reactionsHidden ? '显示贴贴' : '隐藏贴贴');
+        };
+        updateReactionsPreview();
+
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 cancelled = true;
                 maskPreviewStyle.remove();
+                reactionsPreviewStyle.remove();
                 overlay.remove();
             }
         });
@@ -647,6 +667,12 @@
         document.getElementById('bgm-mask-btn').addEventListener('click', () => {
             maskRevealed = !maskRevealed;
             updateMaskPreview();
+            doCapture();
+        });
+
+        document.getElementById('bgm-reactions-btn').addEventListener('click', () => {
+            reactionsHidden = !reactionsHidden;
+            updateReactionsPreview();
             doCapture();
         });
 
@@ -723,6 +749,7 @@
                 const iDoc = iframe.contentDocument;
                 const iStyle = iDoc.createElement('style');
                 const maskCss = maskRevealed ? '[data-bgm-mask] { color: #fff !important; }' : '';
+                const reactionsCss = reactionsHidden ? '.reactions-row { display: none !important; }' : '';
                 const sampleLink = contentDoc.querySelector('.topic_content a[href], #entry_content a[href], .message a[href], .statusContent .text a[href], .subReply a.l[href]')
                     || contentDoc.querySelector('a[href^="http"]')
                     || contentDoc.querySelector('a[href]');
@@ -764,7 +791,7 @@
                         if (bodyColor) quoteCss += `.content-text{color:${bodyColor} !important;}`;
                     }
                 } catch (e) {}
-                iStyle.textContent = style.innerHTML + maskCss + quoteCss + ` a { color: ${linkColor} !important; text-decoration: ${sampleLinkDecoration}; } span[style*="line-through"], span[style*="line-through"] * { text-decoration: line-through !important; text-decoration-color: white !important; }`;
+                iStyle.textContent = style.innerHTML + maskCss + reactionsCss + quoteCss + ` a { color: ${linkColor} !important; text-decoration: ${sampleLinkDecoration}; } span[style*="line-through"], span[style*="line-through"] * { text-decoration: line-through !important; text-decoration-color: white !important; }`;
                 iDoc.head.appendChild(iStyle);
                 iDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;display:inline-block;';
                 iDoc.body.innerHTML = captureEl.innerHTML;
@@ -1848,6 +1875,7 @@
         const aiUrl = GM_getValue('bgm_share_ai_url', '');
         const aiKey = GM_getValue('bgm_share_ai_key', '');
         const aiModel = GM_getValue('bgm_share_ai_model', '') || 'gpt-3.5-turbo';
+        const showReactions = GM_getValue('bgm_share_show_reactions', true);
 
         const tabDiv = document.createElement('div');
         tabDiv.className = 'tab-content';
@@ -1862,6 +1890,19 @@
                     <div style="display:flex;gap:8px;">
                         <a id="bgm-share-auth-btn" href="javascript:void(0);" class="btnPink" style="${token ? 'display:none' : ''}">立即授权</a>
                         <a id="bgm-share-deauth-btn" href="javascript:void(0);" class="btnGraySmall" style="${token ? '' : 'display:none'}">撤销授权</a>
+                    </div>
+                </div>
+            </div>
+            <div class="section" id="section-bgm-share-reactions">
+                <div class="title">默认展示贴贴反应</div>
+                <div class="options-container">
+                    <div class="option-item">
+                        <input type="radio" id="bgm-share-reactions_on" name="bgm-share-reactions" value="on"${showReactions ? ' checked' : ''}>
+                        <label for="bgm-share-reactions_on"><span class="radio-custom"></span><span class="label-text">开启</span></label>
+                    </div>
+                    <div class="option-item">
+                        <input type="radio" id="bgm-share-reactions_off" name="bgm-share-reactions" value="off"${showReactions ? '' : ' checked'}>
+                        <label for="bgm-share-reactions_off"><span class="radio-custom"></span><span class="label-text">关闭</span></label>
                     </div>
                 </div>
             </div>
@@ -1893,6 +1934,11 @@
             tabDiv.querySelector('#bgm-share-auth-status').style.color = '#aaa';
             tabDiv.querySelector('#bgm-share-auth-btn').style.display = '';
             tabDiv.querySelector('#bgm-share-deauth-btn').style.display = 'none';
+        });
+        tabDiv.querySelectorAll('input[name="bgm-share-reactions"]').forEach(r => {
+            r.addEventListener('change', e => {
+                GM_setValue('bgm_share_show_reactions', e.target.value === 'on');
+            });
         });
         tabDiv.querySelector('#bgm-share-ai-save').addEventListener('click', () => {
             GM_setValue('bgm_share_ai_url', tabDiv.querySelector('#bgm-share-ai-url').value);
