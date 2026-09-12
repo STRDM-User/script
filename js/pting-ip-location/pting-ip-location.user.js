@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         蜂巢 - 帖子/回复显示 IP 属地
 // @namespace    https://pting.club/
-// @version      1.0.0
+// @version      1.0.1
 // @description  在帖子、回复及头像悬浮资料卡中显示用户资料页已公开的 IP 属地。
 // @author       Stardream
 // @match        https://pting.club/*
@@ -17,6 +17,7 @@
   const cache = new Map();
   const pending = new Map();
   const unavailable = new Set();
+  const badgeByTarget = new WeakMap();
   let scanTimer;
 
   try {
@@ -55,6 +56,17 @@
     if (!card) return true;
     const firstUserLink = [...card.querySelectorAll('a[href]')].find(getUsername);
     return link === firstUserLink;
+  }
+
+  function isUserSearch() {
+    return location.pathname === '/search' && new URLSearchParams(location.search).get('type') === 'users';
+  }
+
+  function getSearchUsernameElement(link, username) {
+    if (!isUserSearch()) return null;
+    return [...link.querySelectorAll('p')].find(
+      element => element.textContent.trim() === '@' + username
+    ) || null;
   }
 
   function extractLocation(html) {
@@ -101,26 +113,61 @@
     return task;
   }
 
-  function appendBadge(link, username) {
-    const next = link.nextElementSibling;
-    if (next && next.classList.contains('tm-pting-ip-location') &&
-        next.dataset.username === username) return;
+  function appendBadge(target, username) {
+    const knownBadge = badgeByTarget.get(target);
+    if (knownBadge?.isConnected) return;
+
+    const usernameElement = getSearchUsernameElement(target, username);
+    // 用户搜索结果的卡片链接是网格直接子项，只能把徽标放入 @username 行。
+    if (isUserSearch() && !usernameElement) return;
+
+    if (usernameElement) {
+      const existingBadge = [...usernameElement.children].find(
+        element => element.classList.contains('tm-pting-ip-location') &&
+          element.dataset.username === username
+      );
+      if (existingBadge) {
+        badgeByTarget.set(target, existingBadge);
+        return;
+      }
+    }
+
+    const next = target.nextElementSibling;
+    if (!usernameElement && next && next.classList.contains('tm-pting-ip-location') &&
+        next.dataset.username === username) {
+      badgeByTarget.set(target, next);
+      return;
+    }
     const badge = document.createElement('span');
     badge.className = 'tm-pting-ip-location';
     badge.dataset.username = username;
     badge.textContent = 'IP · …';
     badge.title = 'IP 属地';
-    link.insertAdjacentElement('afterend', badge);
+    badgeByTarget.set(target, badge);
+    if (usernameElement) usernameElement.append(badge);
+    else target.insertAdjacentElement('afterend', badge);
     fetchLocation(username).then(locationName => {
       if (!badge.isConnected) return;
       if (locationName) badge.textContent = 'IP · ' + locationName;
-      else badge.remove();
+      else {
+        badgeByTarget.delete(target);
+        badge.remove();
+      }
     });
   }
 
   function scan() {
     // 个人页原生显示属地，因此不重复插入。
     if (location.pathname.startsWith('/users/')) return;
+    if (isUserSearch()) {
+      // 清理旧版错误插入到网格同级的徽标，恢复搜索结果的两栏布局。
+      for (const badge of document.querySelectorAll('.tm-pting-ip-location')) {
+        const parent = badge.parentElement;
+        if (parent?.classList.contains('grid') && parent.querySelector(':scope > a[href^="/users/"]')) {
+          badge.remove();
+        }
+      }
+    }
     for (const link of document.querySelectorAll('a[href]')) {
       const username = getUsername(link);
       if (username && isPrimaryProfileLink(link) && !unavailable.has(username)) {
